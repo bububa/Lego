@@ -388,7 +388,7 @@ class Inserter:
         for k, v in data.iteritems():
             if isinstance(v, unicode): v = v.encode('utf-8').decode('latin-1')
             elif isinstance(v, str): v = v.decode('latin-1')
-            elif type(v) == type(datetime.utcnow()): v = strftime("%Y-%m-%d %X", datetime.timetuple(v))
+            elif type(v) == type(datetime.datetime.utcnow()): v = strftime("%Y-%m-%d %X", datetime.timetuple(v))
             elif type(v) == type(time.localtime()): v = strftime("%Y-%m-%d %X", v)
             keys.append(k + '=%s')
             values.append(v)
@@ -397,15 +397,17 @@ class Inserter:
             c = ConnectionPool.pre_query(conn, True)
             c.execute('SELECT id FROM %s WHERE %s'%(self.table, where))
             last_id = c.fetchone()
-            c.execute('UPDATE %s () SET %s WHERE %s'%(self.table, ','.join(keys), where), tuple(values))
+            c.execute('UPDATE %s SET %s WHERE %s'%(self.table, ','.join(keys), where), tuple(values))
             conn.commit()
             c.close()
             return last_id['id']
+        except Exception, err:
+            print Traceback()
         finally:
             try:
                 self.pool_db.put(conn)
             except:
-                pass
+                print Traceback()
         return None
 
 
