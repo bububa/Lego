@@ -132,7 +132,7 @@ class Indexer(YAMLObject, Base):
     
     def chunk_query(self, from_id, chunk):
         if 'where' in self.query.lower(): return '%s and id> %d limit %d'%(self.query, from_id, chunk)
-        else: return '%s where id>= %d limit %d'%(self.query, from_id, chunk)
+        else: return '%s where id> %d limit %d'%(self.query, from_id, chunk)
     
     def result_collection(self, result):
         self.output.append(result)
