@@ -171,15 +171,17 @@ class Indexer(YAMLObject, Base):
         hits = []
         tfs = []
         total = 0
+        doc_content = doc['content'].lower()
+        black_list = ('the', 'for', 'on', 'at', 'of', 'to', 'in')
         for keyword in ks:
             hit = 0
             if not strict:
-                kk = keyword['name'].split()
-                h = sorted([doc['content'].count(k.strip()) for k in kk if k.strip() and len(k.strip()) > 2])
+                kk = keyword['name'].lower().split()
+                h = sorted([doc_content.count(k.strip()) for k in kk if k.strip() and len(k.strip()) > 1 and k.strip() not in black_list])
                 if not h: continue
                 hit = h[0]
             else:
-                hit = doc['content'].count(k)
+                hit = doc_content.count(keyword['name'].lower())
             if not hit: continue
             total += hit
             keywords.append(keyword['_id'])
