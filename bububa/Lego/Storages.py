@@ -242,7 +242,7 @@ class SiteManager(YAMLObject, Base):
             s['_id'] = label
         for k, v in old_data:
             if isinstance(v, str): v = v.decode('utf-8')
-            if isinstance(v, (long, float)) v = int(v)
+            if isinstance(v, (long, float)): v = int(v)
             s[k] = v
         s.save()
         return old_data
