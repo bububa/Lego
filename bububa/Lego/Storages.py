@@ -152,12 +152,16 @@ class Document(YAMLObject, Base):
             pageObj.effective_url = page['effective_url']
             pageObj.url_hash = url_hash
             pageObj.page = page['body']
+            pageObj.etag = page['etag']
+            pageObj.last_modified = page['last_modified']
             pageObj.wrapper = wrapper
         elif md5(wrapper).hexdigest() != md5(pageObj.wrapper).hexdigest():
             pageObj.last_updated_at = datetime.utcnow()
             pageObj.label = label
             pageObj.url = page['url']
             pageObj.body = page['body']
+            pageObj.etag = page['etag']
+            pageObj.last_modified = page['last_modified']
             pageObj.wrapper = wrapper
             pageObj.updated_times += 1
             days = (pageObj.last_updated_at - pageObj.inserted_at).days + 1
@@ -176,7 +180,7 @@ class Document(YAMLObject, Base):
                 raise StorageError("!Document: don't have page.\nurl: %r"%url)
             return None
         wrapper = pickle.loads(pageObj.wrapper)
-        return {'url':pageObj.url, 'effective_url':pageObj.effective_url, 'body':pageObj.body, 'wrapper':wrapper}
+        return {'url':pageObj.url, 'effective_url':pageObj.effective_url, 'body':pageObj.body, 'wrapper':wrapper, 'etag':pageObj.etag, 'last_modified':pageObj.last_modified}
 
 
 class YAMLStorage(YAMLObject, Base):
@@ -258,7 +262,7 @@ class YAMLStorage(YAMLObject, Base):
             return None
         return old_data
     
-    def update_config(self, data=None, label=None):
+    def update_config(self, data=None, etag=None, last_modified=None, label=None):
         old_data = self.read(label=label)
         if not old_data: 
             if hasattr(self, 'debug') and self.debug:
@@ -277,6 +281,8 @@ class YAMLStorage(YAMLObject, Base):
                 old_data['end_no'] = old_data['start_no'] + old_data['step'] * (page+1)
                 old_data['duration'] -= 10*60
             if old_data.has_key('duration') and old_data['duration'] < 0: old_data['duration'] = 0
+        if etag: old_data['etag'] = etag
+        if last_modified: old_data['last_modified'] = last_modified
         old_data['last_updated_at'] = time.mktime(time.gmtime())
         return self.write(old_data, label)
 

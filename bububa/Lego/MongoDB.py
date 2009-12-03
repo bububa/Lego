@@ -18,6 +18,8 @@ class Page(MongoDocument):
         'effective_url': unicode,
         'url_hash': unicode,
         'domain': unicode,
+        'etag': unicode,
+        'last_modified': unicode,
         'failed_freq': float,
         'update_freq': float,
         'body': unicode,

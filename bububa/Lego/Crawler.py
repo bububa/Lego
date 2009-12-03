@@ -121,7 +121,7 @@ class BaseCrawler(YAMLObject, Base):
         for url in (URL.normalize(urljoin(response.url, a['href'])) for a in iter(soup.findAll('a')) if a.has_key('href') and a['href'] and re.match(url_pattern, a['href'])):
             if url in self.url_cache or url in self.new_urls:continue
             self.new_urls.append(url)
-        self.output.append({'url':response.url, 'effective_url':response.effective_url, 'code':response.code, 'body':response.body, 'size':response.size, 'wrapper':wrapper})
+        self.output.append({'url':response.url, 'effective_url':response.effective_url, 'code':response.code, 'body':response.body, 'size':response.size, 'wrapper':wrapper, 'etag':response.etag, 'last_modified':response.last_modified})
 
 
 class PaginateCrawler(YAMLObject, Base):
@@ -177,7 +177,7 @@ class PaginateCrawler(YAMLObject, Base):
         if hasattr(self, 'url_pattern'): url_pattern = self.url_pattern
         else: url_pattern = ''
         soup = BeautifulSoup(wrapper)
-        self.output.append({'url':response.url, 'effective_url':response.effective_url, 'code':response.code, 'body':response.body, 'size':response.size, 'wrapper':wrapper})
+        self.output.append({'url':response.url, 'effective_url':response.effective_url, 'code':response.code, 'body':response.body, 'size':response.size, 'wrapper':wrapper, 'etag':response.etag, 'last_modified':response.last_modified})
 
 
 class DictParser(YAMLObject, Base):
@@ -298,7 +298,7 @@ class URLCrawler(YAMLObject, Base):
         content = md5(repr(wrapper)).hexdigest()
         if content in self.contents: return
         self.contents.append(content)
-        page = {'url':response.url, 'effective_url':response.effective_url, 'code':response.code, 'body':response.body, 'size':response.size, 'wrapper':wrapper}
+        page = {'url':response.url, 'effective_url':response.effective_url, 'code':response.code, 'body':response.body, 'size':response.size, 'wrapper':wrapper, 'etag':response.etag, 'last_modified':response.last_modified}
         self.output.append(page)
         if not hasattr(self, 'callback'): return
         try:
@@ -397,7 +397,7 @@ class DetailCrawler(YAMLObject, Base):
         content = md5(repr(wrapper)).hexdigest()
         if content in self.contents: return
         self.contents.append(content)
-        page = {'url':response.url, 'effective_url':response.effective_url, 'code':response.code, 'body':response.body, 'size':response.size, 'wrapper':wrapper}
+        page = {'url':response.url, 'effective_url':response.effective_url, 'code':response.code, 'body':response.body, 'size':response.size, 'wrapper':wrapper, 'etag':response.etag, 'last_modified':response.last_modified}
         self.output.append(page)
         self.tmp_pages.append(page)
     
@@ -441,12 +441,13 @@ class FullRSSCrawler(YAMLObject, Base):
         if not starturl: starturl = self.starturl
         self.iterate_callables(exceptions=('callback', 'executable'))
         if hasattr(self, 'executable') and not self.executable.run(label = label): return self.output
-        self.output = []
+        self.output = {'rss':{}, 'entries':[]}
         etag = last_modified = check_baseurl = None
         if hasattr(self, 'check_baseurl'): check_baseurl = self.check_baseurl
         if hasattr(self, 'etag'): etag = self.etag
         if hasattr(self, 'last_modified'): last_modified = self.last_modified
         fullRssParser = FullRssParser(url=starturl, etag = etag, last_modified=last_modified, callback=self.parser, check_baseurl=check_baseurl)
+        self.output['rss'] = fullRssParser.rss_response
         try:
             self.callback.run(self.output)
         except:
@@ -470,8 +471,8 @@ class FullRSSCrawler(YAMLObject, Base):
                 wrapper[k] = v
         if self.miss_fields(wrapper): 
             return
-        page = {'url':response['url'], 'effective_url':response['url'], 'code':'200', 'body':'', 'size':len(response['content']), 'wrapper':wrapper}
-        self.output.append(page)
+        page = {'url':response['url'], 'effective_url':response['url'], 'code':'200', 'body':'', 'size':len(response['content']), 'wrapper':wrapper, 'etag':response['etag'], 'last_modified':response['last_modified']}
+        self.output['entries'].append(page)
 
     def is_external_duplicate(self, link):
         url_hash = md5(link).hexdigest().decode('utf-8')
