@@ -134,7 +134,8 @@ class IDFUpdater(YAMLObject, Base):
         else: debug = None
         if hasattr(self, 'vertical'): vertical = self.vertical
         else: vertical = 0
-        for keyword in Keyword.all({'siteid':siteid}):
+        keywords = ({'name':keyword['name'], 'idf':keyword['idf']} for keyword in Keyword.all({'siteid':siteid}))
+        for keyword in keywords:
             try:
                 self.save(md5(keyword['name'].encode('utf-8').lower()).hexdigest(), keyword['idf'], vertical, debug)
             except:
