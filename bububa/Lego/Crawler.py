@@ -422,8 +422,10 @@ class DetailCrawler(YAMLObject, Base):
 
 class FullRSSCrawler(YAMLObject, Base):
     yaml_tag = u'!FullRSSCrawler'
-    def __init__(self, starturl, check_baseurl=None, essential_fields=None, user_info=None, remove_external_duplicate=None, callback=None, executable=None, debug=None):
+    def __init__(self, starturl, etag=None, last_modified=None, check_baseurl=None, essential_fields=None, user_info=None, remove_external_duplicate=None, callback=None, executable=None, debug=None):
         self.starturl = starturl
+        self.etag = etag
+        self.last_modified = last_modified
         self.check_baseurl = check_baseurl
         self.essential_fields = essential_fields
         self.user_info = user_info
@@ -440,9 +442,11 @@ class FullRSSCrawler(YAMLObject, Base):
         self.iterate_callables(exceptions=('callback', 'executable'))
         if hasattr(self, 'executable') and not self.executable.run(label = label): return self.output
         self.output = []
+        etag = last_modified = check_baseurl = None
         if hasattr(self, 'check_baseurl'): check_baseurl = self.check_baseurl
-        else: check_baseurl = None
-        fullRssParser = FullRssParser(url=starturl, callback=self.parser, check_baseurl=check_baseurl)
+        if hasattr(self, 'etag'): etag = self.etag
+        if hasattr(self, 'last_modified'): last_modified = self.last_modified
+        fullRssParser = FullRssParser(url=starturl, etag = etag, last_modified=last_modified, callback=self.parser, check_baseurl=check_baseurl)
         try:
             self.callback.run(self.output)
         except:
