@@ -252,21 +252,25 @@ class IDF(YAMLObject, Base):
 
 class COEF(YAMLObject, Base):
     yaml_tag = u'!COEF'
-    def __init__(self, siteid=None, debug=None):
+    def __init__(self, siteid=None, running=None, max_relations=None, debug=None):
         self.siteid = siteid
+        self.running = running
+        self.max_relations = max_relations
         self.debug = debug
     
     def __repr__(self):
         return self.__class__.__name__
     
     def run(self):
-        self.output = []
+        self.output = {}
         if hasattr(self,'siteid') and self.siteid: siteid = self.siteid
         else: siteid = None
         if hasattr(self,'debug') and self.debug: debug = self.debug
         else: debug = None
-        if siteid: keywords = list(keyword for keyword in Keyword.all({'siteid':siteid}) if keyword['idf'])
-        else: keywords = list(keyword for keyword in Keyword.all() if keyword['idf'])
+        if siteid: keywords = ({'_id':keyword['_id'], 'name':keyword['name'], 'hits':keyword['hits']} for keyword in Keyword.all({'siteid':siteid}) if keyword['idf'])
+        else: keywords = ({'_id':keyword['_id'], 'name':keyword['name'], 'hits':keyword['hits']} for keyword in Keyword.all() if keyword['idf'])
+        if hasattr(self, 'running') and self.running:
+            keywords = [k for k in keywords if not KeywordCOEF.get_from_id(k['_id'])]
         max_chunk = 20
         total_workers = len(keywords)
         for i in xrange(0, total_workers, max_chunk):
@@ -277,16 +281,14 @@ class COEF(YAMLObject, Base):
                 #response = self.coef(keyword, keywords, debug)
                 #self.update(response)
             threadPool.killAllWorkers()
-            self.output = []
+            self.output = {}
         return self.output
     
     def update(self, response):
         if not response: return
         request = {}
-        for keyword_id, res in response:
-            if keyword_id not in request: request[keyword_id] = []
-            request[keyword_id].append(pickle.dumps(res).decode('utf-8'))
         for keyword_id, coefs in request.items():
+            coefs = [pickle.dumps(c).decode('utf-8') for c in coefs]
             while True:
                 try:
                     coefObj = KeywordCOEF.get_from_id(keyword_id)
@@ -323,7 +325,13 @@ class COEF(YAMLObject, Base):
     
     def result_collection(self, response):
         if not response: return
-        self.output.append(response)
+        keyword_id, coef = response
+        if keyword_id not in self.output: self.output[keyword_id] = []
+        self.output[keyword_id].append(coef)
+        if hasattr(self, 'max_relations') and self.max_relations and len(self.output[keyword_id]) > self.max_relations:
+            tmp = sorted(self.output[keyword_id],cmp=lambda x,y:cmp(y['rank'],x['rank']))
+            self.output[keyword_id] = tmp[:self.max_relations]
+            tmp = None
         
     def rank(self, keyword, k, debug):
         keyword_id, Dab = k
