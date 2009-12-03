@@ -12,6 +12,7 @@ setup(name='bububa.Lego',
     long_description=long_description,
     classifiers=[
     "Programming Language :: Python", 
+    "Topic :: Internet", 
     ("Topic :: Software Development :: Libraries :: Python Modules"), ],
     keywords='syd bububa crawler spider scraber web lego yaml', 
     author='Bububa', 
