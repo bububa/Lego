@@ -278,7 +278,7 @@ class COEF(YAMLObject, Base):
             threadPool = ThreadPool(len(ks))
             for keyword in ks:
                 threadPool.run(self.coef, callback=self.update, keyword=keyword, debug=debug)
-                #response = self.coef(keyword, keywords, debug)
+                #response = self.coef(keyword, debug)
                 #self.update(response)
             threadPool.killAllWorkers()
             self.output = {}
@@ -286,20 +286,22 @@ class COEF(YAMLObject, Base):
     
     def update(self, response):
         if not response: return
-        request = {}
-        for keyword_id, coefs in request.items():
-            coefs = [pickle.dumps(c).decode('utf-8') for c in coefs]
-            while True:
-                try:
-                    coefObj = KeywordCOEF.get_from_id(keyword_id)
-                    if not coefObj: 
-                        coefObj = KeywordCOEF()
-                        coefObj['_id'] = keyword_id
-                    coefObj['keywords'].extend(coefs)
-                    coefObj.save()
-                    break
-                except:
-                    random_sleep(1,2)
+        keyword_id, coefs = response
+        coefs = [pickle.dumps(c).decode('utf-8') for c in coefs]
+        while True:
+            try:
+                coefObj = KeywordCOEF.get_from_id(keyword_id)
+                if not coefObj: 
+                    coefObj = KeywordCOEF()
+                    coefObj['_id'] = keyword_id
+                coefObj['keywords'].extend(coefs)
+                coefObj.save()
+                break
+            except:
+                print Traceback()
+                random_sleep(1,2)
+        self.output[keyword_id] = None
+        self.output.pop(keyword_id)
         
     def coef(self, keyword, debug):
         while True:
@@ -321,14 +323,14 @@ class COEF(YAMLObject, Base):
                 #self.output.append(response)
             threadPool.killAllWorkers()
         if debug: print "!COEF: Finished:%s, %s"%(keyword['_id'], keyword['name'])
-        return self.output
+        return keyword['_id'], self.output[keyword['_id']]
     
     def result_collection(self, response):
         if not response: return
         keyword_id, coef = response
         if keyword_id not in self.output: self.output[keyword_id] = []
         self.output[keyword_id].append(coef)
-        if hasattr(self, 'max_relations') and self.max_relations and len(self.output[keyword_id]) > self.max_relations:
+        if hasattr(self, 'max_relations') and self.max_relations and len(self.output[keyword_id]) > (self.max_relations + 35):
             tmp = sorted(self.output[keyword_id],cmp=lambda x,y:cmp(y['rank'],x['rank']))
             self.output[keyword_id] = tmp[:self.max_relations]
             tmp = None
