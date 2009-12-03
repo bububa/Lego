@@ -9,6 +9,27 @@ Copyright (c) 2009 __ThePeppersStudio__. All rights reserved.
 from datetime import datetime
 from mongokit import *
 
+class Site(MongoDocument):
+    db_name = 'crawldb'
+    collection_name = 'sites'
+    structure = {
+        'url': unicode,
+        'effective_url': unicode,
+        'url_hash': unicode,
+        'etag': unicode,
+        'last_modified': unicode,
+        'body': unicode,
+        'start_no': int,
+        'end_no': int,
+        'duration': int,
+        'max_depth': int,
+    }
+    required_fields = ['url']
+    indexes = [{'fields':'duration'}, {'fields':'url_hash'}]
+    default_values = {'duration':10*60, 'start_no':0, 'end_no':5, 'max_depth':3}
+    use_dot_notation = True
+    
+    
 class Page(MongoDocument):
     db_name = 'crawldb'
     collection_name = 'pages'

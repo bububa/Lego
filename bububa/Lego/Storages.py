@@ -183,6 +183,95 @@ class Document(YAMLObject, Base):
         return {'url':pageObj.url, 'effective_url':pageObj.effective_url, 'body':pageObj.body, 'wrapper':wrapper, 'etag':pageObj.etag, 'last_modified':pageObj.last_modified}
 
 
+class SiteManager(YAMLObject, Base):
+    yaml_tag = u'!SiteManager'
+    def __init__(self, label, method, data, callback=None, debug=None):
+        self.label = label
+        self.page = page
+        self.method = method
+        self.callback = callback
+        self.debug = debug
+
+    def __repr__(self):
+        return "%s(label=%r)" % (self.__class__.__name__, self.label)
+
+    def run(self):
+        self.iterate_callables(exceptions='callback')
+        method = getattr(self, self.method)
+        if not method: self.output = None
+        if hasattr(self, 'data'): 
+            if hasattr(self, 'label') and self.label: self.output = method(self.data, self.label)
+            else: self.output = method(self.data)
+        elif hasattr(self, 'label') and self.label: self.output = method(label=self.label)
+        else: self.output = method()
+        try:
+            self.callback.run()
+        except:
+            if hasattr(self, 'debug') and self.debug:
+                raise StorageError("!SiteManager: failed during callback.\n%r"%Traceback())
+        return self.output
+    
+    def read(self, data=None, label=None):
+        data = None
+        if not label:
+            return ({'label':s['_id'], 'url':s['url'], 'effective_url':s['effective_url'], 'url_hash':s['url_hash'], 'etag':s['etag'], 'last_modified':s['last_modified'], 'body':s['body'], 'start_no':s['start_no'], 'end_no':s['end_no'], 'max_depth':s['max_depth']} for s in Site.all().sort({'duration':1}))
+        else:
+            s = Site.get_from_id(label)
+            if not s: return None
+            return {'label':s['_id'], 'url':s['url'], 'effective_url':s['effective_url'], 'url_hash':s['url_hash'], 'etag':s['etag'], 'last_modified':s['last_modified'], 'body':s['body'], 'start_no':s['start_no'], 'end_no':s['end_no'], 'max_depth':s['max_depth']}
+    
+    def write(self, data=None, label=None):
+        if not isinstance(data, dict) or not data: 
+            if hasattr(self, 'debug') and self.debug:
+                raise StorageError("!SiteManager: invalide input data.")
+            return None
+        if not label:
+            if hasattr(self, 'debug') and self.debug:
+                raise StorageError("!SiteManager: please input label.")
+            return None
+        if isinstance(label, str): label = label.decode('utf-8')
+        update_data = data
+        old_data = self.read(data, label)
+        if not old_data: old_data = {}
+        for k, v in update_data.iteritems():
+            old_data[k] = v
+        if not old_data: return None
+        s = Site.get_from_id(label)
+        if not s:
+            s = Site()
+            s['_id'] = label
+        for k, v in old_data:
+            if isinstance(v, str): v = v.decode('utf-8')
+            if isinstance(v, (long, float)) v = int(v)
+            s[k] = v
+        s.save()
+        return old_data
+    
+    def update_config(self, data=None, etag=None, last_modified=None, label=None):
+        old_data = self.read(label=label)
+        if not old_data: 
+            if hasattr(self, 'debug') and self.debug:
+                raise StorageError("!SiteManager: empty config file.")
+            return None
+        if not data:
+            if old_data.has_key('max_depth') and old_data['max_depth'] > 3: old_data['max_depth']-=1
+            if old_data.has_key('end_no') and old_data.has_key('start_no') and old_data.has_key('step'):
+                page = (old_data['end_no'] - old_data['start_no']) / old_data['step']
+                if page > 5: old_data['end_no'] = old_data['start_no'] + old_data['step'] * (page-1)
+            if old_data.has_key('duration'): old_data['duration'] += 10*60
+        else:
+            if old_data.has_key('max_depth'): old_data['max_depth']+=1
+            if old_data.has_key('end_no') and old_data.has_key('start_no') and old_data.has_key('step'):
+                page = (old_data['end_no'] - old_data['start_no']) / old_data['step']
+                old_data['end_no'] = old_data['start_no'] + old_data['step'] * (page+1)
+                old_data['duration'] -= 10*60
+            if old_data.has_key('duration') and old_data['duration'] < 0: old_data['duration'] = 0
+        if etag: old_data['etag'] = etag
+        if last_modified: old_data['last_modified'] = last_modified
+        old_data['last_updated_at'] = time.mktime(time.gmtime())
+        return self.write(old_data, label)
+    
+
 class YAMLStorage(YAMLObject, Base):
     yaml_tag = u'!YAMLStorage'
     def __init__(self, yaml_file, method, data=None, label=None, callback=None, debug=None):
@@ -240,8 +329,8 @@ class YAMLStorage(YAMLObject, Base):
             if hasattr(self, 'debug') and self.debug:
                 raise StorageError("!YAMLStorage: invalide input data.")
             return None
-        update_data = self.data
-        old_data = self.read()
+        update_data = data
+        old_data = self.read(data, label)
         if not old_data: old_data = {}
         if label and label not in data: old_data[label] = {}
         for k, v in update_data.iteritems():
