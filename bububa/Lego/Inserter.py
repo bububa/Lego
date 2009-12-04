@@ -185,23 +185,23 @@ class COEFInserter(YAMLObject, Base):
             related_keywords = []
             for k in tmp_keywords[0:10]:
                 rk = Keyword.get_from_id(k['_id'])
-                related_keywords.append({'name':rk['name'], 'coef':k['coef'], 'rank':k['rank']})
+                related_keywords.append({'id':rk['ori_id'], 'name':rk['name'], 'coef':k['coef'], 'rank':k['rank']})
             if not related_keywords: continue
             try:
-                self.save(md5(keyword['name'].encode('utf-8').lower()).hexdigest(), simplejson.dumps(related_keywords), vertical, debug)
+                self.save(md5(keyword['name'].encode('utf-8').lower()).hexdigest(), keyword['ori_id'], simplejson.dumps(related_keywords), vertical, debug)
             except:
                 continue
-        self.save(md5('').hexdigest(), simplejson.dump(self.top10(siteid)), vertical, debug)
+        self.save(md5('').hexdigest(), 0, simplejson.dump(self.top10(siteid)), vertical, debug)
         return self.output
     
     def top10(self, siteid):
         keywords = [{'name':keyword['name'], 'idf':keyword['idf']} for keyword in Keyword.all({'siteid':siteid})]
         keywords = sorted(keywords, cmp=lambda x,y:cmp(x['idf'], y['idf']))
-        return [{'name':keyword['name'], 'idf':k['idf']} for k in keywords[0:10]]
+        return [{'name':k['name'], 'idf':k['idf'], 'id':k['ori_id']} for k in keywords[0:10]]
     
-    def save(self, name_hash, json, vertical, debug):
+    def save(self, name_hash, keyword_id, json, vertical, debug):
         inserter = Inserter(self.host, self.port, self.user, self.passwd, self.db, self.table)
-        inserter.insert({'name_hash':name_hash, 'json':json, 'vertical':vertical})
+        inserter.insert({'name_hash':name_hash, 'keyword_id':keyword_id, 'json':json, 'vertical':vertical})
         self.output += 1
         if debug: print "!COEFInserter: Inserted:%s"%name_hash
 
