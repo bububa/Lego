@@ -276,7 +276,7 @@ class COEF(YAMLObject, Base):
         for i in xrange(0, total_workers, max_chunk):
             ks = keywords[i:i + max_chunk]
             threadPool = ThreadPool(len(ks))
-            for keyword in ks:
+            for keyword in iter(ks):
                 threadPool.run(self.coef, callback=self.update, keyword=keyword, debug=debug)
                 #response = self.coef(keyword, debug)
                 #self.update(response)
@@ -316,7 +316,7 @@ class COEF(YAMLObject, Base):
         for i in xrange(0, total_workers, max_chunk):
             ks = keywords[i:i + max_chunk]
             threadPool = ThreadPool(len(ks))
-            for k in ks:
+            for k in iter(ks):
                 threadPool.run(self.rank, callback=self.result_collection, keyword=keyword, k=k, debug=debug)
                 #response = self.rank(keyword, k, debug)
                 #if not response: continue
