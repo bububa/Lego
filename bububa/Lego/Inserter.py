@@ -190,12 +190,13 @@ class COEFInserter(YAMLObject, Base):
             try:
                 self.save(md5(keyword['name'].encode('utf-8').lower()).hexdigest(), keyword['ori_id'], simplejson.dumps(related_keywords), vertical, debug)
             except:
+                print TrackBack()
                 continue
-        self.save(md5('').hexdigest(), 0, simplejson.dump(self.top10(siteid)), vertical, debug)
+        self.save(md5('').hexdigest(), 0, simplejson.dumps(self.top10(siteid)), vertical, debug)
         return self.output
     
     def top10(self, siteid):
-        keywords = [{'name':keyword['name'], 'idf':keyword['idf']} for keyword in Keyword.all({'siteid':siteid})]
+        keywords = [{'name':keyword['name'], 'ori_id':keyword['ori_id'], 'idf':keyword['idf']} for keyword in Keyword.all({'siteid':siteid})]
         keywords = sorted(keywords, cmp=lambda x,y:cmp(x['idf'], y['idf']))
         return [{'name':k['name'], 'idf':k['idf'], 'id':k['ori_id']} for k in keywords[0:10]]
     
