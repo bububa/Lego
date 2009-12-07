@@ -120,14 +120,14 @@ class Indexer(YAMLObject, Base):
         else: ks = list(Keyword.all())
         while docs:
             threadPool = ThreadPool(chunk)
-            for doc in docs:
+            for doc in iter(docs):
                 threadPool.run(self.update, callback=self.result_collection, doc=doc, ks=ks, siteid=siteid, strict=strict, debug=debug)
                 #self.update(doc, siteid, strict, debug)
                 max_id = doc['ori_id']
             threadPool.killAllWorkers()
             self.save_docs(siteid, debug)
             query = self.chunk_query(max_id, chunk)
-            docs = self.readdb(query, True)
+            docs = self.readdb(query, False)
         return self.output
     
     def chunk_query(self, from_id, chunk):
@@ -286,7 +286,7 @@ class COEF(YAMLObject, Base):
     
     def update(self, response):
         if not response: return
-        keyword_id, coefs = response
+        keyword_id, siteid, coefs = response
         coefs = [pickle.dumps(c).decode('utf-8') for c in coefs]
         while True:
             try:
@@ -294,6 +294,7 @@ class COEF(YAMLObject, Base):
                 if not coefObj: 
                     coefObj = KeywordCOEF()
                     coefObj['_id'] = keyword_id
+                coefObj['siteid'] = siteid
                 coefObj['keywords'].extend(coefs)
                 coefObj.save()
                 break
@@ -323,7 +324,7 @@ class COEF(YAMLObject, Base):
                 #self.output.append(response)
             threadPool.killAllWorkers()
         if debug: print "!COEF: Finished:%s, %s"%(keyword['_id'], keyword['name'])
-        return keyword['_id'], self.output[keyword['_id']]
+        return keyword['_id'], self.siteid, self.output[keyword['_id']]
     
     def result_collection(self, response):
         if not response: return
