@@ -21,4 +21,4 @@ setup(name='bububa.Lego',
     license='BSD', 
     packages=find_packages(), 
     namespace_packages=['bububa'],
-    install_requires=['bububa.SuperMario'])
+    install_requires=['bububa.SuperMario', 'mmseg'])
