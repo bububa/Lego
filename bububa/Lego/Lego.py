@@ -24,7 +24,7 @@ from bububa.Lego.Filters import *
 from bububa.Lego.Controls import *
 from bububa.Lego.Crawler import *
 from bububa.Lego.Storages import *
-from bububa.Lego.Intellectural import *
+from bububa.Lego.Collective import *
 from bububa.Lego.Inserter import *
 
 
