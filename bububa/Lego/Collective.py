@@ -20,7 +20,7 @@ try:
 except:
     import pickle
 try:
-    from pymmseg import mmseg
+    from mmseg import mmseg
 except:
     pass
 from yaml import YAMLObject
