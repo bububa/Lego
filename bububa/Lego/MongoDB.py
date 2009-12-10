@@ -58,7 +58,7 @@ class Page(MongoDocument):
 
 
 class Keyword(MongoDocument):
-    db_name = 'intellectual'
+    db_name = 'collective'
     collection_name = 'keywords'
     structure = {
         'name': unicode,
@@ -76,7 +76,7 @@ class Keyword(MongoDocument):
 
 
 class Doc(MongoDocument):
-    db_name = 'intellectual'
+    db_name = 'collective'
     collection_name = 'docs'
     structure = {
         'ori_id': int,
@@ -94,7 +94,7 @@ class Doc(MongoDocument):
     use_dot_notation = True
 
 class KeywordCOEF(MongoDocument):
-    db_name = 'intellectual'
+    db_name = 'collective'
     collection_name = 'coefs'
     structure = {
         'keywords':list,
