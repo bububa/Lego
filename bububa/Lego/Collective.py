@@ -246,7 +246,7 @@ class IDF(YAMLObject, Base):
             Dk=0
             res = 0.0
         else: res = log(Dd/Dk)
-        if debug: print '!IDF: keyword:%s, %s, %f'%(keyword['_id'], keyword['name'].encode('utf-8'), res)
+        if debug: print '!IDF: keyword:%s, %r, %f'%(keyword['_id'], keyword['name'], res)
         return keyword, Dk, res
     
     def update(self, response):
