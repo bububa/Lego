@@ -422,7 +422,7 @@ class DetailCrawler(YAMLObject, Base):
 
 class FullRSSCrawler(YAMLObject, Base):
     yaml_tag = u'!FullRSSCrawler'
-    def __init__(self, starturl, etag=None, last_modified=None, check_baseurl=None, essential_fields=None, user_info=None, remove_external_duplicate=None, callback=None, executable=None, debug=None):
+    def __init__(self, starturl, etag=None, last_modified=None, check_baseurl=None, essential_fields=None, user_info=None, remove_external_duplicate=None, callback=None, executable=None, multithread=None, debug=None):
         self.starturl = starturl
         self.etag = etag
         self.last_modified = last_modified
@@ -432,6 +432,7 @@ class FullRSSCrawler(YAMLObject, Base):
         self.remove_external_duplicate = remove_external_duplicate
         self.callback = callback
         self.executable = executable
+        self.multithread = multithread
         self.debug = debug
 
     def __repr__(self):
@@ -442,11 +443,12 @@ class FullRSSCrawler(YAMLObject, Base):
         self.iterate_callables(exceptions=('callback', 'executable'))
         if hasattr(self, 'executable') and not self.executable.run(label = label): return self.output
         self.output = {'rss':{}, 'entries':[]}
-        etag = last_modified = check_baseurl = None
+        etag = last_modified = check_baseurl = multithread = None
         if hasattr(self, 'check_baseurl'): check_baseurl = self.check_baseurl
         if hasattr(self, 'etag'): etag = self.etag
         if hasattr(self, 'last_modified'): last_modified = self.last_modified
-        fullRssParser = FullRssParser(url=starturl, etag = etag, last_modified=last_modified, callback=self.parser, check_baseurl=check_baseurl)
+        if hasattr(self, 'multithread'): multithread = self.multithread
+        fullRssParser = FullRssParser(url=starturl, etag = etag, last_modified=last_modified, callback=self.parser, check_baseurl=check_baseurl, multithread=multithread)
         self.output['rss'] = fullRssParser.rss_response
         try:
             self.callback.run(self.output)
