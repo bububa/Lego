@@ -160,12 +160,13 @@ class IDFUpdater(YAMLObject, Base):
         else:
             inserter.update({'idf%d'%vertical:keyword['idf']}, where)
         self.output += 1
-        if debug: print "!IDFUpdater: Updateded:%s"%name_hash  
+        if debug: print "!IDFUpdater: Updateded:%s"%name_hash
+    
 
 
 class COEFInserter(YAMLObject, Base):
     yaml_tag = u'!COEFInserter'
-    def __init__(self, host, port, user, passwd, db, table, siteid, clientid=None, vertical=None, debug=None):
+    def __init__(self, host, port, user, passwd, db, table, siteid, clientid=None, vertical=None, with_searches=None, debug=None):
         self.host = host
         self.port = port
         self.user = user
@@ -175,6 +176,7 @@ class COEFInserter(YAMLObject, Base):
         self.siteid = siteid
         self.clientid = clientid
         self.vertical = vertical
+        self.with_searches = with_searches
         self.debug = debug
 
     def __repr__(self):
@@ -191,6 +193,8 @@ class COEFInserter(YAMLObject, Base):
         else: debug = None
         if hasattr(self, 'vertical'): vertical = self.vertical
         else: vertical = 0
+        if hasattr(self, 'with_searches'): with_searches = self.with_searches
+        else: with_searches = None
         for keywordCoef in KeywordCOEF.all({'siteid':siteid}):
             keyword = Keyword.get_from_id(keywordCoef['_id'])
             tmp_keywords = [pickle.loads(coef.encode('utf-8')) for coef in keywordCoef['keywords']]
@@ -204,11 +208,14 @@ class COEFInserter(YAMLObject, Base):
                 self.save(md5(keyword['name'].encode('utf-8').lower()).hexdigest(), keyword['ori_id'], simplejson.dumps(related_keywords), vertical, debug)
             except:
                 continue
-        self.save(md5('').hexdigest(), 0, simplejson.dumps(self.top10(siteid)), vertical, debug)
+        self.save(md5('').hexdigest(), 0, simplejson.dumps(self.top10(siteid, with_searches)), vertical, debug)
         return self.output
 
-    def top10(self, siteid):
-        keywords = [{'name':keyword['name'], 'ori_id':keyword['ori_id'], 'idf':keyword['idf']} for keyword in Keyword.all({'siteid':siteid}) if keyword['idf']>0]
+    def top10(self, siteid, with_searches):
+        if with_searches:
+            keywords = [{'name':keyword['name'], 'ori_id':keyword['ori_id'], 'idf':keyword['idf']*keyword['sidf']} for keyword in Keyword.all({'siteid':siteid}) if (keyword['idf']*keyword['sidf'])>0]
+        else:
+            keywords = [{'name':keyword['name'], 'ori_id':keyword['ori_id'], 'idf':keyword['idf']} for keyword in Keyword.all({'siteid':siteid}) if keyword['idf']>0]
         keywords = sorted(keywords, cmp=lambda x,y:cmp(x['idf'], y['idf']))
         return [{'name':k['name'], 'idf':k['idf'], 'id':k['ori_id']} for k in keywords[0:10]]
 
