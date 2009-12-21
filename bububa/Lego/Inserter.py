@@ -111,7 +111,7 @@ class IterateInserter(YAMLObject, Base):
 
 class IDFUpdater(YAMLObject, Base):
     yaml_tag = u'!IDFUpdater'
-    def __init__(self, host, port, user, passwd, db, table, siteid, vertical=None, debug=None):
+    def __init__(self, host, port, user, passwd, db, table, siteid, vertical=None, column=None, based_on_id=None, debug=None):
         self.host = host
         self.port = port
         self.user = user
@@ -120,11 +120,13 @@ class IDFUpdater(YAMLObject, Base):
         self.table = table
         self.siteid = siteid
         self.vertical = vertical
+        self.column = column
+        self.based_on_id = based_on_id
         self.debug = debug
-    
+
     def __repr__(self):
         return "%s(host=%r, port=%r, user=%r, passwd=%r, db=%r, table=%r)" %(self.__class__.__name__, self.host, self.port, self.user, self.passwd, self.db, self.table)
-    
+
     def run(self):
         self.iterate_callables()
         self.output = 0
@@ -134,20 +136,31 @@ class IDFUpdater(YAMLObject, Base):
         else: debug = None
         if hasattr(self, 'vertical'): vertical = self.vertical
         else: vertical = 0
-        keywords = ({'name':keyword['name'], 'idf':keyword['idf']} for keyword in Keyword.all({'siteid':siteid}))
-        for keyword in keywords:
+        if hasattr(self, 'column'): column = self.column
+        else: column = None
+        if hasattr(self, 'based_on_id'): based_on_id = self.based_on_id
+        else: based_on_id = None
+        keywords = [{'ori_id':keyword['ori_id'], 'name':keyword['name'], 'idf':keyword['idf']} for keyword in Keyword.all({'siteid':siteid})]
+        for keyword in iter(keywords):
             try:
-                self.save(md5(keyword['name'].encode('utf-8').lower()).hexdigest(), keyword['idf'], vertical, debug)
+                self.save(keyword, vertical, column, based_on_id, debug)
             except:
                 continue
         return self.output
-    
-    def save(self, name_hash, idf, vertical, debug):
+
+    def save(self, keyword, vertical, column, based_on_id, debug):
         inserter = Inserter(self.host, self.port, self.user, self.passwd, self.db, self.table)
-        inserter.update({'idf%d'%vertical:idf}, 'name_hash="%s"'%name_hash)
+        name_hash = md5(keyword['name'].encode('utf-8').lower()).hexdigest()
+        if based_on_id:
+            where = 'id="%s"'%keyword['ori_id']
+        else:
+            where = 'name_hash="%s"'%name_hash
+        if column:
+            inserter.update({column:keyword['idf']}, where)
+        else:
+            inserter.update({'idf%d'%vertical:keyword['idf']}, where)
         self.output += 1
-        if debug: print "!IDFUpdater: Updateded:%s"%name_hash
-    
+        if debug: print "!IDFUpdater: Updateded:%s"%name_hash  
 
 
 class COEFInserter(YAMLObject, Base):
@@ -163,10 +176,10 @@ class COEFInserter(YAMLObject, Base):
         self.clientid = clientid
         self.vertical = vertical
         self.debug = debug
-    
+
     def __repr__(self):
         return "%s(host=%r, port=%r, user=%r, passwd=%r, db=%r, table=%r)" %(self.__class__.__name__, self.host, self.port, self.user, self.passwd, self.db, self.table)
-    
+
     def run(self):
         self.iterate_callables()
         self.output = 0
@@ -190,21 +203,77 @@ class COEFInserter(YAMLObject, Base):
             try:
                 self.save(md5(keyword['name'].encode('utf-8').lower()).hexdigest(), keyword['ori_id'], simplejson.dumps(related_keywords), vertical, debug)
             except:
-                print TrackBack()
                 continue
         self.save(md5('').hexdigest(), 0, simplejson.dumps(self.top10(siteid)), vertical, debug)
         return self.output
-    
+
     def top10(self, siteid):
-        keywords = [{'name':keyword['name'], 'ori_id':keyword['ori_id'], 'idf':keyword['idf']} for keyword in Keyword.all({'siteid':siteid})]
+        keywords = [{'name':keyword['name'], 'ori_id':keyword['ori_id'], 'idf':keyword['idf']} for keyword in Keyword.all({'siteid':siteid}) if keyword['idf']>0]
         keywords = sorted(keywords, cmp=lambda x,y:cmp(x['idf'], y['idf']))
         return [{'name':k['name'], 'idf':k['idf'], 'id':k['ori_id']} for k in keywords[0:10]]
-    
+
     def save(self, name_hash, keyword_id, json, vertical, debug):
         inserter = Inserter(self.host, self.port, self.user, self.passwd, self.db, self.table)
-        inserter.insert({'name_hash':name_hash, 'keyword_id':keyword_id, 'json':json, 'vertical':vertical})
+        try:
+            inserter.insert({'name_hash':name_hash, 'keyword_id':keyword_id, 'json':json, 'vertical':vertical})
+        except Exception, err:
+            #inserter.update({'name_hash':name_hash, 'keyword_id':keyword_id, 'json':json, 'vertical':vertical}, 'name_hash="%s" AND vertical=%d'%(name_hash, vertical))
+            pass
         self.output += 1
         if debug: print "!COEFInserter: Inserted:%s"%name_hash
+
+
+class COEFUpdater(YAMLObject, Base):
+    yaml_tag = u'!COEFUpdater'
+    def __init__(self, host, port, user, passwd, db, table, siteid, debug=None):
+        self.host = host
+        self.port = port
+        self.user = user
+        self.passwd = passwd
+        self.db = db
+        self.table = table
+        self.siteid = siteid
+        self.debug = debug
+
+    def __repr__(self):
+        return "%s(host=%r, port=%r, user=%r, passwd=%r, db=%r, table=%r)" %(self.__class__.__name__, self.host, self.port, self.user, self.passwd, self.db, self.table)
+
+    def run(self):
+        self.iterate_callables()
+        self.output = 0
+        if hasattr(self,'siteid') and self.siteid: siteid = self.siteid
+        else: siteid = None
+        if hasattr(self,'debug') and self.debug: debug = self.debug
+        else: debug = None
+        for keywordCoef in KeywordCOEF.all({'siteid':siteid}):
+            keyword = Keyword.get_from_id(keywordCoef['_id'])
+            tmp_keywords = [pickle.loads(coef.encode('utf-8')) for coef in keywordCoef['keywords']]
+            tmp_keywords = sorted(tmp_keywords,cmp=lambda x,y:cmp(y['rank'],x['rank']))
+            related_keywords = []
+            for k in tmp_keywords[0:10]:
+                rk = Keyword.get_from_id(k['_id'])
+                related_keywords.append({'ori_id':rk['ori_id'], 'name':rk['name'], 'coef':k['coef'], 'rank':k['rank']})
+            if not related_keywords: continue
+            try:
+                self.save(keyword, related_keywords, debug)
+            except:
+                continue
+        return self.output
+
+    def save(self, keyword, related_keywords, debug):
+        inserter = Inserter(self.host, self.port, self.user, self.passwd, self.db, self.table)
+        name_hash = md5(keyword['name'].encode('utf-8').lower()).hexdigest()
+        try:
+            inserter.remove('keyword_id=%d'%keyword['ori_id'])
+            for k in related_keywords:
+                try:
+                    inserter.insert({'keyword_id':keyword['ori_id'], 'related_keyword_id': k['ori_id'], 'coefficient':k['coef'], 'rank':k['rank'])
+                except:
+                    continue
+        except:
+            return
+        self.output += 1
+        if debug: print "!COEFUpdater: Updateded:%s"%name_hash
 
 
 class InserterError(Exception):
