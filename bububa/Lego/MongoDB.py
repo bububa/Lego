@@ -65,13 +65,15 @@ class Keyword(MongoDocument):
         'ori_id': int, 
         'idf': float,
         'hits': int,
-        'siteid': int, 
+        'searches': int,
+        'sidf': float,
+        'siteid': int,
         'inserted_at': datetime,
         'updated_at': datetime
     }
     required_fields = ['name']
     indexes = [{'fields':'siteid'}]
-    default_values = {'idf':0.0, 'ori_id':0, 'inserted_at':datetime.utcnow, 'updated_at':datetime.utcnow}
+    default_values = {'idf':0.0, 'ori_id':0, 'searches':0.0, 'sidf':0.0, 'inserted_at':datetime.utcnow, 'updated_at':datetime.utcnow}
     use_dot_notation = True
 
 
@@ -92,6 +94,26 @@ class Doc(MongoDocument):
     indexes = [{'fields':['keywords', 'siteid']}, {'fields':'siteid'}, {'fields':'keywords'}]
     default_values = {'vertical':0, 'inserted_at':datetime.utcnow, 'updated_at':datetime.utcnow}
     use_dot_notation = True
+
+
+class Search(MongoDocument):
+    db_name = 'collective'
+    collection_name = 'searches'
+    structure = {
+        'ori_id': int,
+        'content': unicode,
+        'keywords': list,
+        'hits': list,
+        'tfs': list, 
+        'siteid': int,
+        'vertical': int, 
+        'inserted_at': datetime,
+        'updated_at': datetime
+    }
+    indexes = [{'fields':['keywords', 'siteid']}, {'fields':'siteid'}, {'fields':'keywords'}]
+    default_values = {'vertical':0, 'inserted_at':datetime.utcnow, 'updated_at':datetime.utcnow}
+    use_dot_notation = True
+
 
 class KeywordCOEF(MongoDocument):
     db_name = 'collective'
