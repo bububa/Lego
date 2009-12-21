@@ -381,6 +381,21 @@ class Inserter:
                 pass
         return None
     
+    def remove(self, where):
+            conn = self.re_connect()
+            try:
+                c = ConnectionPool.pre_query(conn, True)
+                c.execute('DELETE FROM %s WHERE %s'%(self.table, where))
+                conn.commit()
+                c.close()
+                return None
+            finally:
+                try:
+                    self.pool_db.put(conn)
+                except:
+                    pass
+            return None
+    
     def update(self, data, where):
         if not isinstance(data, dict): return None
         keys = []
