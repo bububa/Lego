@@ -15,8 +15,8 @@ import datetime
 import threading
 import Queue
 import MySQLdb
-from eventlet import db_pool
-from eventlet.db_pool import ConnectTimeout
+import DBUtils.PersistentDB
+from DBUtils.SteadyDB import connect
 from dateutil.parser import parse as dateParse
 from bububa.SuperMario.utils import Traceback
 
@@ -269,35 +269,24 @@ def timeout_command(command, timeout):
     return process.stdout.read()
 
 
-class ConnectionPool(db_pool.TpooledConnectionPool):
-    """A pool which gives out saranwrapped MySQLdb connections from a pool
-    """
-    def __init__(self, *args, **kwargs):
-        super(ConnectionPool, self).__init__(MySQLdb, *args, **kwargs)
+class DB:
+    def __init__(self, host, port, user, passwd, db, table):
+        self.host = host
+        self.port = port
+        self.user = user
+        self.passwd = passwd
+        self.db = db
+        self.table = table
 
-    def get(self):
-        conn = super(ConnectionPool, self).get()
-        # annotate the connection object with the details on the
-        # connection; this is used elsewhere to check that you haven't
-        # suddenly changed databases in midstream while making a
-        # series of queries on a connection.
-        arg_names = ['host','user','passwd','db','port','unix_socket','conv','connect_timeout',
-         'compress', 'named_pipe', 'init_command', 'read_default_file', 'read_default_group',
-         'cursorclass', 'use_unicode', 'charset', 'sql_mode', 'client_flag', 'ssl',
-         'local_infile']
-        # you could have constructed this connectionpool with a mix of
-        # keyword and non-keyword arguments, but we want to annotate
-        # the connection object with a dict so it's easy to check
-        # against so here we are converting the list of non-keyword
-        # arguments (in self._args) into a dict of keyword arguments,
-        # and merging that with the actual keyword arguments
-        # (self._kwargs).  The arg_names variable lists the
-        # constructor arguments for MySQLdb Connection objects.
-        converted_kwargs = dict([ (arg_names[i], arg) for i, arg in enumerate(self._args) ])
-        converted_kwargs.update(self._kwargs)
-        conn.connection_parameters = converted_kwargs
-        return conn
-
+    def re_connect(self, is_persist=None):
+        if is_persist:
+            persist=DBUtils.PersistentDB.PersistentDB(MySQLdb, 100, host=self.host,user=self.user,passwd=self.passwd,db=self.db)
+            conn = persist.connection()
+            return conn
+        else:
+            conn = connect(MySQLdb, 1000, host=self.host,user=self.user,passwd=self.passwd,db=self.db)
+            return conn
+    
     @staticmethod
     def pre_query(conn, dict_cursor=False):
         if not conn: return None
@@ -318,45 +307,25 @@ class ConnectionPool(db_pool.TpooledConnectionPool):
             for result in results:
                 yield result
 
-
-class DatabaseConnector(db_pool.DatabaseConnector):
-    def __init__(self, credentials, *args, **kwargs):
-        super(DatabaseConnector, self).__init__(MySQLdb, credentials, conn_pool=db_pool.ConnectionPool, *args, **kwargs)
-
-    def get(self, host, dbname, port=3306):
-        key = (host, dbname, port)
-        if key not in self._databases:
-            new_kwargs = self._kwargs.copy()
-            new_kwargs['db'] = dbname
-            new_kwargs['host'] = host
-            new_kwargs['port'] = port
-            new_kwargs.update(self.credentials_for(host))
-            dbpool = ConnectionPool(*self._args, **new_kwargs)
-            self._databases[key] = dbpool
-        return self._databases[key]
-
-
-class Inserter:
-    def __init__(self, host, port, user, passwd, db, table):
-        self.host = host
-        self.port = port
-        self.user = user
-        self.passwd = passwd
-        self.db = db
-        self.table = table
+    def iterget(self, query, data=None, conn=None, is_persist=None):
+        if not isinstance(query, (str, unicode)): return None
+        if not conn: conn = self.re_connect(is_persist)
+        c = DB.pre_query(conn, True)
+        if data: c.execute(query, data)
+        else: c.execute(query)
+        return DB.result_iter(c)
+        return None
     
-    def re_connect(self):
-        for rtry in xrange(0, 3):
-            try:
-                conn = self.pool_db.get()
-                break
-            except (AttributeError, ConnectTimeout):
-                if rtry >1 : return
-                self.connector = DatabaseConnector({'%s:%d'%(self.host, self.port): {'host':self.host,'port':self.port, 'user':self.user, 'passwd':self.passwd}})
-                self.pool_db = self.connector.get('%s:%d'%(self.host, self.port), self.db)
-        return conn
     
-    def insert(self, data):
+    def get(self, query, data=None, conn=None, is_persist=None):
+        if not isinstance(query, (str, unicode)): return None
+        if not conn: conn = self.re_connect(is_persist)
+        c = DB.pre_query(conn, True)
+        if data: c.execute(query, data)
+        else: c.execute(query)
+        return c.fetchall()
+    
+    def insert(self, data, conn=None, is_persist=None):
         if not isinstance(data, dict): return None
         keys = []
         values = []
@@ -367,36 +336,24 @@ class Inserter:
             elif type(v) == type(time.localtime()): v = strftime("%Y-%m-%d %X", v)
             keys.append(k)
             values.append(v)
-        conn = self.re_connect()
-        try:
-            c = ConnectionPool.pre_query(conn, True)
-            c.execute('INSERT INTO %s (%s) VALUES (%s)'%(self.table, ','.join(keys), ','.join(['%s'] * len(keys))), tuple(values))
-            conn.commit()
-            c.close()
-            return c.lastrowid
-        finally:
-            try:
-                self.pool_db.put(conn)
-            except:
-                pass
+        if not conn: conn = self.re_connect(is_persist)
+        c = DB.pre_query(conn, True)
+        c.execute('INSERT INTO %s (%s) VALUES (%s)'%(self.table, ','.join(keys), ','.join(['%s'] * len(keys))), tuple(values))
+        conn.commit()
+        c.close()
+        conn.close()
+        return c.lastrowid
+    
+    def remove(self, where, conn=None, is_persist=None):
+        if not conn: conn = self.re_connect(is_persist)
+        c = DB.pre_query(conn, True)
+        c.execute('DELETE FROM %s WHERE %s'%(self.table, where))
+        conn.commit()
+        c.close()
+        conn.close()
         return None
     
-    def remove(self, where):
-            conn = self.re_connect()
-            try:
-                c = ConnectionPool.pre_query(conn, True)
-                c.execute('DELETE FROM %s WHERE %s'%(self.table, where))
-                conn.commit()
-                c.close()
-                return None
-            finally:
-                try:
-                    self.pool_db.put(conn)
-                except:
-                    pass
-            return None
-    
-    def update(self, data, where):
+    def update(self, data, where, conn=None, is_persist=None):
         if not isinstance(data, dict): return None
         keys = []
         values = []
@@ -407,78 +364,22 @@ class Inserter:
             elif type(v) == type(time.localtime()): v = strftime("%Y-%m-%d %X", v)
             keys.append(k + '=%s')
             values.append(v)
-        conn = self.re_connect()
+        if not conn: conn = self.re_connect(is_persist)
         try:
-            c = ConnectionPool.pre_query(conn, True)
-            c.execute('SELECT id FROM %s WHERE %s'%(self.table, where))
+            c = DB.pre_query(conn, True)
+            c.execute('SELECT * FROM %s WHERE %s'%(self.table, where))
             last_id = c.fetchone()
             c.execute('UPDATE %s SET %s WHERE %s'%(self.table, ','.join(keys), where), tuple(values))
             conn.commit()
             c.close()
-            return last_id['id']
+            conn.close()
+            try:
+                return last_id['id']
+            except:
+                return last_id
         except Exception, err:
-            print Traceback()
-        finally:
-            try:
-                self.pool_db.put(conn)
-            except:
-                print Traceback()
-        return None
-
-
-class DB:
-    def __init__(self, host, port, user, passwd, db, table):
-        self.host = host
-        self.port = port
-        self.user = user
-        self.passwd = passwd
-        self.db = db
-        self.table = table
-
-    def re_connect(self):
-        for rtry in xrange(0, 3):
-            try:
-                conn = self.pool_db.get()
-                break
-            except (AttributeError, ConnectTimeout):
-                if rtry >1 : return
-                self.connector = DatabaseConnector({'%s:%d'%(self.host, self.port): {'host':self.host,'port':self.port, 'user':self.user, 'passwd':self.passwd}})
-                self.pool_db = self.connector.get('%s:%d'%(self.host, self.port), self.db)
-        return conn
-
-    def iterget(self, query, data=None):
-        if not isinstance(query, (str, unicode)): return None
-        conn = self.re_connect()
-        try:
-            c = ConnectionPool.pre_query(conn, True)
-            if data: c.execute(query, data)
-            else: c.execute(query)
-            return ConnectionPool.result_iter(c)
-        except:
+            #print Traceback()
             pass
-        finally:
-            try:
-                self.pool_db.put(conn)
-            except:
-                pass
-        return None
-    
-    
-    def get(self, query, data=None):
-        if not isinstance(query, (str, unicode)): return None
-        conn = self.re_connect()
-        try:
-            c = ConnectionPool.pre_query(conn, True)
-            if data: c.execute(query, data)
-            else: c.execute(query)
-            return c.fetchall()
-        except:
-            pass
-        finally:
-            try:
-                self.pool_db.put(conn)
-            except:
-                pass
         return None
 
 
