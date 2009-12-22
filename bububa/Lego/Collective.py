@@ -30,7 +30,7 @@ try:
     from bububa.Lego.MongoDB import Keyword, Doc, KeywordCOEF, Search
 except:
     pass
-from bububa.Lego.Helpers import ThreadPool, ConnectionPool, DatabaseConnector, Inserter, DB
+from bububa.Lego.Helpers import ThreadPool, DB
 from bububa.SuperMario.utils import Traceback, random_sleep
 
 
@@ -235,7 +235,7 @@ class Indexer(YAMLObject, Base):
         from_id = 0
         query = self.chunk_query(from_id, chunk)
         try:
-            docs = self.readdb(query, True)
+            docs = self.readdb(query, False)
         except:
             if debug: raise CollectiveError('Fail to get docs! %r'%Traceback())
         if not docs:
@@ -321,11 +321,14 @@ class Indexer(YAMLObject, Base):
         
     def readdb(self, query, iterate=None):
         print query
-        con = DB(self.host, self.port, self.user, self.passwd, self.db, self.table)
-        if iterate:
-            return con.iterget(query)
-        else:
-            return con.get(query)
+        try:
+            con = DB(self.host, self.port, self.user, self.passwd, self.db, self.table)
+            if iterate:
+                return con.iterget(query)
+            else:
+                return con.get(query)
+        except Exception, err:
+            print err
     
 
 class IDF(YAMLObject, Base):
@@ -552,4 +555,3 @@ class CollectiveError(Exception):
 
     def __str__(self):
         return repr(self.parameter)
-
