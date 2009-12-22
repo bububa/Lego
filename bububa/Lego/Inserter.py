@@ -7,6 +7,7 @@ Created by Syd on 2009-11-18.
 Copyright (c) 2009 __ThePeppersStudio__. All rights reserved.
 """
 
+import time
 from hashlib import md5
 from datetime import datetime
 try:
@@ -20,7 +21,7 @@ try:
     from bububa.Lego.MongoDB import Page, Keyword, KeywordCOEF
 except:
     pass
-from bububa.Lego.Helpers import Inserter
+from bububa.Lego.Helpers import DB
 from bububa.SuperMario.utils import Traceback
 
 
@@ -43,8 +44,8 @@ class BaseInserter(YAMLObject, Base):
     
     def run(self):
         self.iterate_callables(exceptions='callback')
-        inserter = Inserter(self.host, self.port, self.user, self.passwd, self.db, self.table)
-        self.output = inserter.insert(self.data)
+        db = DB(self.host, self.port, self.user, self.passwd, self.db, self.table)
+        self.output = db.insert(self.data)
         try:
             self.callback.run()
         except:
@@ -73,7 +74,7 @@ class IterateInserter(YAMLObject, Base):
         self.iterate_callables(exceptions='callback')
         self.output = []
         for page in Page.all({'in_database':0}):
-            inserter = Inserter(self.host, self.port, self.user, self.passwd, self.db, self.table)
+            db = DB(self.host, self.port, self.user, self.passwd, self.db, self.table)
             data = page['wrapper']
             data['url'] = page['url']
             data['effective_url'] = page['effective_url']
@@ -90,10 +91,10 @@ class IterateInserter(YAMLObject, Base):
                     data = [data[k] for k in self.keys['mongo_keys'] if k in data]
             
             try:
-                last_id = inserter.insert(data)
+                last_id = db.insert(data)
             except:
                 try:
-                    last_id = inserter.update(data, "url_hash='%s'"%data['url_hash'])
+                    last_id = db.update(data, "url_hash='%s'"%data['url_hash'])
                 except:
                     last_id = None
             if last_id:
@@ -109,9 +110,10 @@ class IterateInserter(YAMLObject, Base):
                 raise InserterError("!IterateInserter: failed during callback.\n%r"%Traceback())
         return self.output
 
+
 class IDFUpdater(YAMLObject, Base):
     yaml_tag = u'!IDFUpdater'
-    def __init__(self, host, port, user, passwd, db, table, siteid, vertical=None, column=None, based_on_id=None, debug=None):
+    def __init__(self, host, port, user, passwd, db, table, siteid, vertical=None, column=None, based_on_id=None, duplicate_name_filter=None, debug=None):
         self.host = host
         self.port = port
         self.user = user
@@ -122,6 +124,7 @@ class IDFUpdater(YAMLObject, Base):
         self.vertical = vertical
         self.column = column
         self.based_on_id = based_on_id
+        self.duplicate_name_filter = duplicate_name_filter
         self.debug = debug
 
     def __repr__(self):
@@ -140,25 +143,33 @@ class IDFUpdater(YAMLObject, Base):
         else: column = None
         if hasattr(self, 'based_on_id'): based_on_id = self.based_on_id
         else: based_on_id = None
+        if hasattr(self, 'duplicate_name_filter'): duplicate_name_filter = self.duplicate_name_filter
+        else: duplicate_name_filter = None
         keywords = [{'ori_id':keyword['ori_id'], 'name':keyword['name'], 'idf':keyword['idf']} for keyword in Keyword.all({'siteid':siteid})]
         for keyword in iter(keywords):
             try:
-                self.save(keyword, vertical, column, based_on_id, debug)
-            except:
+                self.save(keyword, vertical, column, based_on_id, duplicate_name_filter, debug)
+            except Exception, err:
+                print err
                 continue
         return self.output
 
-    def save(self, keyword, vertical, column, based_on_id, debug):
-        inserter = Inserter(self.host, self.port, self.user, self.passwd, self.db, self.table)
+    def save(self, keyword, vertical, column, based_on_id, duplicate_name_filter, debug):
+        db = DB(self.host, self.port, self.user, self.passwd, self.db, self.table)
         name_hash = md5(keyword['name'].encode('utf-8').lower()).hexdigest()
-        if based_on_id:
+        if duplicate_name_filter:
+            con = DB(self.host, self.port, self.user, self.passwd, self.db, self.table)
+            ids = con.get('select id from %s where name=%s and %s'%(self.table, '%s', duplicate_name_filter), keyword['name'])
+            if not ids: return
+            where = 'id in (%s)'%(','.join([str(i['id']) for i in ids]))
+        elif based_on_id:
             where = 'id="%s"'%keyword['ori_id']
         else:
             where = 'name_hash="%s"'%name_hash
         if column:
-            inserter.update({column:keyword['idf']}, where)
+            db.update({column:keyword['idf']}, where)
         else:
-            inserter.update({'idf%d'%vertical:keyword['idf']}, where)
+            db.update({'idf%d'%vertical:keyword['idf']}, where)
         self.output += 1
         if debug: print "!IDFUpdater: Updateded:%s"%name_hash
     
@@ -220,9 +231,9 @@ class COEFInserter(YAMLObject, Base):
         return [{'name':k['name'], 'idf':k['idf'], 'id':k['ori_id']} for k in keywords[0:10]]
 
     def save(self, name_hash, keyword_id, json, vertical, debug):
-        inserter = Inserter(self.host, self.port, self.user, self.passwd, self.db, self.table)
+        db = DB(self.host, self.port, self.user, self.passwd, self.db, self.table)
         try:
-            inserter.insert({'name_hash':name_hash, 'keyword_id':keyword_id, 'json':json, 'vertical':vertical})
+            db.insert({'name_hash':name_hash, 'keyword_id':keyword_id, 'json':json, 'vertical':vertical})
         except Exception, err:
             #inserter.update({'name_hash':name_hash, 'keyword_id':keyword_id, 'json':json, 'vertical':vertical}, 'name_hash="%s" AND vertical=%d'%(name_hash, vertical))
             pass
@@ -268,17 +279,19 @@ class COEFUpdater(YAMLObject, Base):
         return self.output
 
     def save(self, keyword, related_keywords, debug):
-        inserter = Inserter(self.host, self.port, self.user, self.passwd, self.db, self.table)
+        db = DB(self.host, self.port, self.user, self.passwd, self.db, self.table)
         name_hash = md5(keyword['name'].encode('utf-8').lower()).hexdigest()
         try:
-            inserter.remove('keyword_id=%d'%keyword['ori_id'])
-            for k in related_keywords:
-                try:
-                    inserter.insert({'keyword_id':keyword['ori_id'], 'related_keyword_id': k['ori_id'], 'coefficient':k['coef'], 'rank':k['rank'])
-                except:
-                    continue
-        except:
+            db.remove('keyword_id=%d'%keyword['ori_id'])
+        except Exception, err:
+            print err
             return
+        for k in related_keywords:
+            try:
+                db.insert({'keyword_id':keyword['ori_id'], 'related_keyword_id': k['ori_id'], 'coefficient':k['coef'], 'rank':k['rank']})
+            except Exception, err:
+                print err
+                continue
         self.output += 1
         if debug: print "!COEFUpdater: Updateded:%s"%name_hash
 
