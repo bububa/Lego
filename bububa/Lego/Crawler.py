@@ -16,6 +16,7 @@ from Helpers import Converter, ThreadPool
 from bububa.Lego.Base import Base
 try:
     from bububa.Lego.MongoDB import Page
+    from bububa.Lego.MongoDB import URLTrie
 except:
     pass
 from bububa.SuperMario.Mario import Mario, MarioBatch
@@ -224,13 +225,15 @@ class ArrayParser(YAMLObject, Base):
 
 class URLCrawler(YAMLObject, Base):
     yaml_tag = u'!URLCrawler'
-    def __init__(self, urls, url_pattern, wrapper, duplicate_pattern=None, essential_fields=None, remove_external_duplicate=None, user_info=None, callback=None, debug=None):
+    def __init__(self, urls, wrapper, url_pattern=None, duplicate_pattern=None, essential_fields=None, remove_external_duplicate=None, multithread=True, save_output=None, user_info=None, callback=None, debug=None):
         self.urls = urls
         self.url_pattern = url_pattern
         self.duplicate_pattern = duplicate_pattern
         self.essential_fields = essential_fields
         self.remove_external_duplicate = remove_external_duplicate
         self.wrapper = wrapper
+        self.multithread = multithread
+        self.save_output = save_output
         self.user_info = user_info
         self.callback = callback
         self.debug = debug
@@ -272,13 +275,33 @@ class URLCrawler(YAMLObject, Base):
             if hasattr(self, 'debug') and self.debug:
                 raise CrawlerError("!URLCrawler: no links need to be crawled")
             return self.output
-        mario = MarioBatch(callback = self.parser)
-        for link in links:
-            mario.add_job(link)
-        mario(10)
+        if hasattr(self, 'multithread') and self.multithread:
+            max_chunk = 10
+            total_workers = len(links)
+            for i in xrange(0, total_workers, max_chunk):
+                us = links[i:i + max_chunk]
+                self.run_workers(us)
+        else:
+            mario = MarioBatch(callback = self.parser)
+            for link in links:
+                mario.add_job(link)
+            mario(10)
         self.contents = None
         del(self.contents)
         return self.output
+    
+    def run_workers(self, urls):
+        threadPool = ThreadPool(len(urls))
+        for url in urls:
+            threadPool.run(self.fetch, url=url)
+        if hasattr(self, 'timeout') and self.timeout: wait = self.timeout
+        else: wait = None
+        threadPool.killAllWorkers(wait)
+    
+    def fetch(self, url):
+        mario = Mario()
+        response = mario.get(url)
+        self.parser(response)
 
     def parser(self, response):
         pattern = re.compile('.*%s'%self.wrapper, re.S)
@@ -299,7 +322,10 @@ class URLCrawler(YAMLObject, Base):
         if content in self.contents: return
         self.contents.append(content)
         page = {'url':response.url, 'effective_url':response.effective_url, 'code':response.code, 'body':response.body, 'size':response.size, 'wrapper':wrapper, 'etag':response.etag, 'last_modified':response.last_modified}
-        self.output.append(page)
+        if hasattr(self, 'save_output') and self.save_output:
+            self.output.append(page)
+        else:
+            self.output = True
         if not hasattr(self, 'callback'): return
         try:
             self.callback.run(page)
@@ -317,7 +343,6 @@ class URLCrawler(YAMLObject, Base):
                 raise CrawlerError("!URLCrawler: fail to check external duplicate.\nurl: %s"%link)
             return None
         
-        
     def miss_fields(self, wrapper):
         if not hasattr(self, 'essential_fields'): return None
         for k in self.essential_fields:
@@ -328,15 +353,119 @@ class URLCrawler(YAMLObject, Base):
         return None
 
 
+class URLsFinder(YAMLObject, Base):
+    yaml_tag = u'!URLsFinder'
+    def __init__(self, starturl, label, target_url, url_pattern=None, max_depth=0, callback=None, debug=None):
+        self.starturl = starturl
+        self.target_url = target_url
+        self.url_pattern = url_pattern
+        self.label = label
+        self.max_depth = max_depth
+        self.callback = callback
+        self.debug = debug
+
+    def __repr__(self):
+        return "%s(starturl=%r)" %(self.__class__.__name__, self.starturl)
+
+    def run(self, starturl=None, label=None):
+        if not starturl: starturl = self.starturl
+        if not label: label = self.label
+        self.iterate_callables(exceptions=('callback'))
+        self.output = []
+        if hasattr(self, 'url_pattern'): url_pattern = self.url_pattern
+        else: url_pattern = ''
+        pattern = re.compile(url_pattern, re.I)
+        for depth in xrange(self.max_depth, 0, -1):
+            if depth == self.max_depth: 
+                urls = [self.starturl, ]
+                self.save_links(urls, label, depth)
+            else:
+                urls = [u['url'] for u in URLTrie.all({'label':label, 'depth':depth})]
+            self.depth_crawl(urls, label, depth)
+        try:
+            self.callback.run()
+        except:
+            if hasattr(self, 'debug') and self.debug:
+                raise CrawlerError("!BaseCrawler: failed during callback.\n%r"%Traceback())
+            pass
+        return self.output
+    
+    def depth_crawl(self, urls, label, depth):
+        max_chunk = 10
+        total_workers = len(urls)
+        for i in xrange(0, total_workers, max_chunk):
+            us = urls[i:i + max_chunk]
+            self.run_workers(us, label, depth)
+    
+    def run_workers(self, urls, label, depth):
+        self.url_cache = []
+        threadPool = ThreadPool(len(urls))
+        for url in urls:
+            threadPool.run(self.fetch, url=url, label=label, depth=depth)
+        if hasattr(self, 'timeout') and self.timeout: wait = self.timeout
+        else: wait = None
+        threadPool.killAllWorkers(wait)
+        self.save_links(self.url_cache, label, depth-1)
+        self.url_cache = None
+    
+    def fetch(self, url, label, depth):
+        mario = Mario()
+        response = mario.get(url)
+        if hasattr(self, 'url_pattern'): url_pattern = self.url_pattern
+        else: url_pattern = ''
+        soup = BeautifulSoup(response.body)
+        for url in (URL.normalize(urljoin(response.url, a['href'])) for a in iter(soup.findAll('a')) if a.has_key('href') and a['href'] and re.match(url_pattern, a['href'])):
+            if url in self.url_cache:continue
+            self.url_cache.append(url)
+    
+    def save_links(self, links, label, depth):
+        if hasattr(self, 'debug') and self.debug:
+            print 'saving links for depth: %d'%depth
+        pattern = re.compile(self.target_url, re.I)
+        for link in links:
+            ident = md5('url:%s, label:%s'%(link, label)).hexdigest().decode('utf-8')
+            if self.is_external_duplicate(ident):
+                continue
+            while True:
+                try:
+                    urlTrie = URLTrie()
+                    urlTrie['_id'] = ident
+                    if isinstance(link, str): link = link.decode('utf-8')
+                    if isinstance(label, str): label = label.decode('utf-8')
+                    urlTrie['url'] = link
+                    urlTrie['url_hash'] = md5(link).hexdigest().decode('utf-8')
+                    urlTrie['depth'] = depth
+                    urlTrie['label'] = label
+                    urlTrie['inserted_at'] = datetime.utcnow()
+                    if pattern.match(link):
+                        self.output.append(link)
+                        urlTrie['is_target'] = 1
+                    urlTrie.save()
+                    if hasattr(self, 'debug') and self.debug:
+                        print 'saved:%s, %d'%(link, depth)
+                    break
+                except Exception, err:
+                    print err
+                    continue
+        
+    def is_external_duplicate(self, ident):
+        try:
+            return URLTrie.get_from_id(ident)
+        except Exception, err:
+            return None
+
+
 class DetailCrawler(YAMLObject, Base):
     yaml_tag = u'!DetailCrawler'
-    def __init__(self, pages, url_pattern, wrapper, essential_fields=None, user_info=None, remove_external_duplicate=None, callback=None, debug=None):
+    def __init__(self, pages, url_pattern, wrapper, essential_fields=None, user_info=None, remove_external_duplicate=None, multithread=True, save_output=None, callback=None, debug=None):
         self.pages = pages
         self.url_pattern = url_pattern
         self.essential_fields = essential_fields
         self.wrapper = wrapper
         self.user_info = user_info
         self.remove_external_duplicate = remove_external_duplicate
+        self.multithread = multithread
+        self.save_output = save_output
         self.callback = callback
         self.debug = debug
     
@@ -373,11 +502,31 @@ class DetailCrawler(YAMLObject, Base):
         if hasattr(self, 'remove_external_duplicate') and self.remove_external_duplicate:
             links = [link for link in links if not self.is_external_duplicate(link)]
         if not links: return
-        mario = MarioBatch(callback = self.parser)
-        for link in set(links):
-            mario.add_job(link)
-        mario(10)
+        if hasattr(self, 'multithread') and self.multithread:
+            max_chunk = 10
+            total_workers = len(links)
+            for i in xrange(0, total_workers, max_chunk):
+                us = links[i:i + max_chunk]
+                self.run_workers(us)
+        else:
+            mario = MarioBatch(callback = self.parser)
+            for link in set(links):
+                mario.add_job(link)
+            mario(10)
         return
+    
+    def run_workers(self, urls):
+        threadPool = ThreadPool(len(urls))
+        for url in urls:
+            threadPool.run(self.thread_fetch, url=url)
+        if hasattr(self, 'timeout') and self.timeout: wait = self.timeout
+        else: wait = None
+        threadPool.killAllWorkers(wait)
+
+    def thread_fetch(self, url):
+        mario = Mario()
+        response = mario.get(url)
+        self.parser(response)
     
     def parser(self, response):
         pattern = re.compile('.*%s'%self.wrapper, re.S)
@@ -398,7 +547,10 @@ class DetailCrawler(YAMLObject, Base):
         if content in self.contents: return
         self.contents.append(content)
         page = {'url':response.url, 'effective_url':response.effective_url, 'code':response.code, 'body':response.body, 'size':response.size, 'wrapper':wrapper, 'etag':response.etag, 'last_modified':response.last_modified}
-        self.output.append(page)
+        if hasattr(self, 'save_output') and self.save_output:
+            self.output.append(page)
+        else:
+            self.output = True
         self.tmp_pages.append(page)
     
     def is_external_duplicate(self, link):
