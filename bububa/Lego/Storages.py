@@ -25,7 +25,7 @@ except ImportError:
     from yaml import Loader, Dumper
 from bububa.Lego.Base import Base
 try:
-    from bububa.Lego.MongoDB import Page
+    from bububa.Lego.MongoDB import Page, URLTrie
 except:
     pass
 from bububa.SuperMario.utils import Traceback
@@ -105,10 +105,11 @@ class File(YAMLObject, Base):
 
 class Document(YAMLObject, Base):
     yaml_tag = u'!Document'
-    def __init__(self, label, page, method, callback=None, debug=None):
+    def __init__(self, label, page, method, urltrie_label=None, callback=None, debug=None):
         self.label = label
         self.page = page
         self.method = method
+        self.urltrie_label = urltrie_label
         self.callback = callback
         self.debug = debug
     
@@ -170,6 +171,17 @@ class Document(YAMLObject, Base):
         else:
             return page
         pageObj.save()
+        if hasattr(self, 'urltrie_label') and self.urltrie_label:
+            ident = md5('url:%s, label:%s'%(page['url'].encode('utf-8'), self.urltrie_label)).hexdigest().decode('utf-8')
+            while True:
+                try:
+                    urlTrieObj = URLTrie.get_from_id(ident)
+                    if urlTrieObj:
+                        urlTrieObj['in_database'] = 1
+                        urlTrieObj.save()
+                    break
+                except:
+                    continue
         return page
     
     def read(self, url):
@@ -374,6 +386,35 @@ class YAMLStorage(YAMLObject, Base):
         if last_modified: old_data['last_modified'] = last_modified
         old_data['last_updated_at'] = time.mktime(time.gmtime())
         return self.write(old_data, label)
+
+
+class URLTrieStorage(YAMLObject, Base):
+    yaml_tag = u'!URLTrieStorage'
+    def __init__(self, label, method, context=None, callback=None, debug=None):
+        self.label = label
+        self.context = context
+        self.method = method
+        self.callback = callback
+        self.debug = debug
+    
+    def __repr__(self):
+        return "%s(method=%r)" % (self.__class__.__name__, self.method)
+    
+    def run(self, context=None):
+        self.iterate_callables(exceptions='callback')
+        if not context: context = self.context
+        method = getattr(self, self.method)
+        if not method: self.output = None
+        self.output = method(context)
+        try:
+            self.callback.run()
+        except:
+            if hasattr(self, 'debug') and self.debug:
+                raise StorageError("!Document: failed during callback.\n%r"%Traceback())
+        return self.output
+    
+    def getURLs(self, context=None):
+        return [url for url in URLTrie.all(context)]
 
 
 class StorageError(Exception):
