@@ -123,3 +123,21 @@ class KeywordCOEF(MongoDocument):
         'siteid': int
     }
     indexes = [{'fields':'siteid'}]
+
+
+class URLTrie(MongoDocument):
+    db_name = 'crawldb'
+    collection_name = 'urltrie'
+    structure = {
+        'label': unicode,
+        'url': unicode,
+        'url_hash': unicode,
+        'depth': int,
+        'is_target': int,
+        'in_database': int,
+        'inserted_at': datetime
+    }
+    required_fields = ['url_hash']
+    indexes = [{'fields':'url_hash', 'unique':True}, {'fields':['label', 'url_hash']}, {'fields':'label'}, {'fields':['label', 'depth']}, {'fields':['label', 'depth', 'url_hash']}, {'fields':'depth'}, {'fields':'is_target'}, {'fields':'in_database'}, {'fields':['label', 'is_target']}, {'fields':['label', 'in_database']}, {'fields':['label', 'is_target', 'in_database']}]
+    default_values = {'inserted_at':datetime.utcnow, 'is_target':0, 'in_database':0}
+    use_dot_notation=True
