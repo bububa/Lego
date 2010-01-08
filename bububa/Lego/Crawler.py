@@ -110,7 +110,7 @@ class BaseCrawler(YAMLObject, Base):
         self.contents.append(content)
         if hasattr(self, 'url_pattern'): url_pattern = self.url_pattern
         else: url_pattern = ''
-        soup = BeautifulSoup(wrapper)
+        soup = BeautifulSoup(wrapper, fromEncoding='utf-8')
         self.url_cache.append(response.url)
         if hasattr(self, 'duplicate_pattern') and self.duplicate_pattern:
             pattern = re.compile(self.duplicate_pattern, re.I)
@@ -177,7 +177,7 @@ class PaginateCrawler(YAMLObject, Base):
         self.contents.append(content)
         if hasattr(self, 'url_pattern'): url_pattern = self.url_pattern
         else: url_pattern = ''
-        soup = BeautifulSoup(wrapper)
+        soup = BeautifulSoup(wrapper, fromEncoding='utf-8')
         self.output.append({'url':response.url, 'effective_url':response.effective_url, 'code':response.code, 'body':response.body, 'size':response.size, 'wrapper':wrapper, 'etag':response.etag, 'last_modified':response.last_modified})
 
 
@@ -411,9 +411,10 @@ class URLsFinder(YAMLObject, Base):
     def fetch(self, url, label, depth):
         mario = Mario()
         response = mario.get(url)
+        if not response: return
         if hasattr(self, 'url_pattern'): url_pattern = self.url_pattern
         else: url_pattern = ''
-        soup = BeautifulSoup(response.body)
+        soup = BeautifulSoup(response.body, fromEncoding='utf-8')
         for url in (URL.normalize(urljoin(response.url, a['href'])) for a in iter(soup.findAll('a')) if a.has_key('href') and a['href'] and re.match(url_pattern, a['href'])):
             if url in self.url_cache:continue
             self.url_cache.append(url)
@@ -496,7 +497,7 @@ class DetailCrawler(YAMLObject, Base):
     
     def fetch(self, page):
         self.tmp_pages = []
-        soup = BeautifulSoup(page['wrapper'])
+        soup = BeautifulSoup(page['wrapper'], fromEncoding='utf-8')
         links = [URL.normalize(urljoin(page['effective_url'], a['href'])) for a in iter(soup.findAll('a')) if a.has_key('href') and a['href'] and re.match(self.url_pattern, a['href'])]
         if not links: return
         if hasattr(self, 'remove_external_duplicate') and self.remove_external_duplicate:
