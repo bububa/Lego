@@ -164,6 +164,7 @@ class PaginateCrawler(YAMLObject, Base):
         return self.output
 
     def parser(self, response):
+        if not response: return
         if hasattr(self, 'wrapper'):
             pattern = re.compile(self.wrapper, re.S)
             wrapper = pattern.findall(response.body)
@@ -203,16 +204,23 @@ class DictParser(YAMLObject, Base):
         else:
             pattern = re.compile('.*%s'%self.wrapper, re.S)
             wrapper = pattern.match(response.body)
-            if wrapper:
+            if wrapper: 
                 wrapper = wrapper.groupdict()
+                if not wrapper:
+                    pattern = re.compile(self.wrapper, re.S)
+                    res = pattern.findall(response.body)
+                    if not res: wrapper = {}
+                    elif len(res) > 1: wrapper = res
+                    else: wrapper = res[0]
         if not wrapper: 
             #if hasattr(self, 'debug') and self.debug:
             #    raise CrawlerError("!DetailCrawler: no matched content.\n%r"%response)
             return None
-        for k, v in wrapper.items():
-            if k.endswith('_number') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toNumber(v)
-            elif k.endswith('_datetime') or k.endswith('_at') or k.endswith('_on') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toDatetime(v)
-            elif isinstance(v, (str, unicode)): wrapper[k] = v.strip()
+        if isinstance(wrapper, dict):
+            for k, v in wrapper.items():
+                if k.endswith('_number') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toNumber(v)
+                elif k.endswith('_datetime') or k.endswith('_at') or k.endswith('_on') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toDatetime(v)
+                elif isinstance(v, (str, unicode)): wrapper[k] = v.strip()
         self.output = wrapper
         return self.output
 
@@ -320,6 +328,7 @@ class URLCrawler(YAMLObject, Base):
         self.parser(response)
 
     def parser(self, response):
+        if not response: return
         wrapper = {}
         if isinstance(self.wrapper, dict):
             for k, v in self.wrapper.iteritems():
@@ -331,20 +340,27 @@ class URLCrawler(YAMLObject, Base):
         else:
             pattern = re.compile('.*%s'%self.wrapper, re.S)
             wrapper = pattern.match(response.body)
-            if wrapper:
+            if wrapper: 
                 wrapper = wrapper.groupdict()
+                if not wrapper:
+                    pattern = re.compile(self.wrapper, re.S)
+                    res = pattern.findall(response.body)
+                    if not res: wrapper = {}
+                    elif len(res) > 1: wrapper = res
+                    else: wrapper = res[0]
         if not wrapper: 
             #if hasattr(self, 'debug') and self.debug:
             #    raise CrawlerError("!DetailCrawler: no matched content.\n%r"%response)
             return
-        if hasattr(self, 'user_info') and isinstance(self.user_info, dict) and self.user_info:
-            for k, v in self.user_info.iteritems():
-                wrapper[k] = v
-        for k, v in wrapper.items():
-            if k.endswith('_number') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toNumber(v)
-            elif k.endswith('_datetime') or k.endswith('_at') or k.endswith('_on') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toDatetime(v)
-            elif isinstance(v, (str, unicode)): wrapper[k] = v.strip()
-        if self.miss_fields(wrapper): return
+        if isinstance(wrapper, dict):
+            if hasattr(self, 'user_info') and isinstance(self.user_info, dict) and self.user_info:
+                for k, v in self.user_info.iteritems():
+                    wrapper[k] = v
+            for k, v in wrapper.items():
+                if k.endswith('_number') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toNumber(v)
+                elif k.endswith('_datetime') or k.endswith('_at') or k.endswith('_on') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toDatetime(v)
+                elif isinstance(v, (str, unicode)): wrapper[k] = v.strip()
+            if self.miss_fields(wrapper): return
         content = md5(repr(wrapper)).hexdigest()
         if content in self.contents: return
         self.contents.append(content)
@@ -485,7 +501,7 @@ class URLsFinder(YAMLObject, Base):
 
 class DetailCrawler(YAMLObject, Base):
     yaml_tag = u'!DetailCrawler'
-    def __init__(self, pages, url_pattern, wrapper, essential_fields=None, user_info=None, remove_external_duplicate=None, multithread=True, save_output=None, callback=None, debug=None):
+    def __init__(self, pages, url_pattern, wrapper, essential_fields=None, user_info=None, remove_external_duplicate=None, multithread=True, save_output=None, callback=None, page_callback=None, debug=None):
         self.pages = pages
         self.url_pattern = url_pattern
         self.essential_fields = essential_fields
@@ -495,13 +511,14 @@ class DetailCrawler(YAMLObject, Base):
         self.multithread = multithread
         self.save_output = save_output
         self.callback = callback
+        self.page_callback = page_callback
         self.debug = debug
     
     def __repr__(self):
         return "%s(pages=%r, url_pattern=%r, wrapper=%r)" % (self.__class__.__name__, self.pages, self.url_pattern, self.wrapper)
     
     def run(self):
-        self.iterate_callables(exceptions='callback')
+        self.iterate_callables(exceptions=('callback', 'page_callback'))
         self.output = []
         if not self.pages: 
             if hasattr(self, 'debug') and self.debug:
@@ -557,6 +574,7 @@ class DetailCrawler(YAMLObject, Base):
         self.parser(response)
     
     def parser(self, response):
+        if not response: return
         wrapper = {}
         if isinstance(self.wrapper, dict):
             for k, v in self.wrapper.iteritems():
@@ -568,24 +586,37 @@ class DetailCrawler(YAMLObject, Base):
         else:
             pattern = re.compile('.*%s'%self.wrapper, re.S)
             wrapper = pattern.match(response.body)
-            if wrapper:
+            if wrapper: 
                 wrapper = wrapper.groupdict()
+                if not wrapper:
+                    pattern = re.compile(self.wrapper, re.S)
+                    res = pattern.findall(response.body)
+                    if not res: wrapper = {}
+                    elif len(res) > 1: wrapper = res
+                    else: wrapper = res[0]
         if not wrapper: 
             #if hasattr(self, 'debug') and self.debug:
             #    raise CrawlerError("!DetailCrawler: no matched content.\n%r"%response)
             return
-        if hasattr(self, 'user_info') and isinstance(self.user_info, dict) and self.user_info:
-            for k, v in self.user_info.iteritems():
-                wrapper[k] = v
-        for k, v in wrapper.items():
-            if k.endswith('_number') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toNumber(v)
-            elif k.endswith('_datetime') or k.endswith('_at') or k.endswith('_on') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toDatetime(v)
-            elif isinstance(v, (str, unicode)): wrapper[k] = v.strip()
-        if self.miss_fields(wrapper): return
+        if isinstance(wrapper, dict):
+            if hasattr(self, 'user_info') and isinstance(self.user_info, dict) and self.user_info:
+                for k, v in self.user_info.iteritems():
+                    wrapper[k] = v
+            for k, v in wrapper.items():
+                if k.endswith('_number') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toNumber(v)
+                elif k.endswith('_datetime') or k.endswith('_at') or k.endswith('_on') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toDatetime(v)
+                elif isinstance(v, (str, unicode)): wrapper[k] = v.strip()
+            if self.miss_fields(wrapper): return
         content = md5(repr(wrapper)).hexdigest()
         if content in self.contents: return
         self.contents.append(content)
         page = {'url':response.url, 'effective_url':response.effective_url, 'code':response.code, 'body':response.body, 'size':response.size, 'wrapper':wrapper, 'etag':response.etag, 'last_modified':response.last_modified}
+        if hasattr(self, 'page_callback'):
+            try:
+                self.page_callback.run(page)
+            except Exception, err:
+                print err
+                pass
         if hasattr(self, 'save_output') and self.save_output:
             self.output.append(page)
         else:
@@ -650,6 +681,7 @@ class FullRSSCrawler(YAMLObject, Base):
         return self.output
 
     def parser(self, response):
+        if not response: return None
         if hasattr(self, 'remove_external_duplicate') and self.remove_external_duplicate and self.is_external_duplicate(URL.normalize(response['url'])): 
             if hasattr(self, 'debug') and self.debug:
                 raise CrawlerError("!FullRSSCrawler: external duplicate url.\n%r"%response)
