@@ -125,8 +125,9 @@ class Document(YAMLObject, Base):
         try:
             self.callback.run()
         except:
-            if hasattr(self, 'debug') and self.debug:
-                raise StorageError("!Document: failed during callback.\n%r"%Traceback())
+            #if hasattr(self, 'debug') and self.debug:
+            #    raise StorageError("!Document: failed during callback.\n%r"%Traceback())
+            pass
         return self.output
     
     def batch_write(self, pages):
@@ -141,9 +142,12 @@ class Document(YAMLObject, Base):
         if isinstance(self.label, str): label = self.label.decode('utf-8')
         else: label = self.label
         url_hash = md5(page['effective_url']).hexdigest().decode('utf-8')
-        for k, v in page['wrapper'].items():
-            if isinstance(v, unicode): page['wrapper'][k] = v.encode('utf-8')
-        wrapper = pickle.dumps(page['wrapper']).decode('utf-8')
+        if isinstance(page['wrapper'], dict):
+            for k, v in page['wrapper'].items():
+                if isinstance(v, unicode): page['wrapper'][k] = v.encode('utf-8')
+            wrapper = pickle.dumps(page['wrapper']).decode('utf-8')
+        else:
+            wrapper = page['wrapper']
         pageObj = Page.get_from_id(url_hash)
         if not pageObj:
             pageObj = Page()
