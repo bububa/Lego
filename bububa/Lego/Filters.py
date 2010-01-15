@@ -22,11 +22,12 @@ class Regx(Base, YAMLObject):
     def __repr__(self):
         return "%s(string=%r, pattern=%r, multiple=%r)" % (self.__class__.__name__, self.string, self.pattern, self.multiple)
         
-    def run(self):
+    def run(self, string=None):
         self.iterate_callables()
-        if not (isinstance(self.pattern, (str, unicode)) and isinstance(self.string, (str, unicode))): return None
+        if not string: string = self.string
+        if not (isinstance(self.pattern, (str, unicode)) and isinstance(string, (str, unicode))): return None
         pattern = re.compile(self.pattern)
-        res = pattern.findall(self.string)
+        res = pattern.findall(string)
         if self.multiple: 
             self.output = res
             return res

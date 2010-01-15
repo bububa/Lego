@@ -111,7 +111,27 @@ class Sequence(YAMLObject, Base):
             step.run()
             self.output.append(step.output)
         return self.output
+    
 
+class Steps(YAMLObject, Base):
+    yaml_tag = u'!Steps'
+    def __init__(self, steps, inputs=None):
+        self.steps = steps
+        self.inputs = inputs
+    
+    def __repr__(self):
+        return "%s(steps=%r)" % (self.__class__.__name__, self.steps)
+    
+    def run(self, inputs=None):
+        self.output = None
+        if not inputs: inputs = self.inputs
+        if not isinstance(self.steps, (list, set)): return None
+        self.output = []
+        for i, step in enumerate(self.steps):
+            if i == 0 and inputs: self.output = step.run(inputs)
+            else: self.output = step.run(self.output)
+        return self.output
+    
 
 class Step(YAMLObject, Base):
     yaml_tag = u'!Step'
@@ -124,9 +144,10 @@ class Step(YAMLObject, Base):
     def __repr__(self):
         return "%s(obj=%r)" % (self.__class__.__name__, self.obj)
     
-    def run(self):
+    def run(self, inputs=None):
         if hasattr(self, 'method'): method = getattr(self.obj, method)
         else: method = getattr(self.obj, 'run')
+        if not inputs: inputs = self.inputs
         if hasattr(self, 'cycle'):
             self.cycle = self.parse_input(self.cycle)
         if not hasattr(self, 'cycle') or not self.cycle:

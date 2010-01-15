@@ -9,6 +9,7 @@ Copyright (c) 2009 __ThePeppersStudio__. All rights reserved.
 
 import re
 import hashlib
+from datetime import datetime
 from dateutil.parser import parse as dateParse
 from yaml import YAMLObject
 from bububa.Lego.Base import Base
@@ -77,6 +78,42 @@ class Increase(YAMLObject, Base):
         self.output = number + 1
         return self.output
     
+class Dict(YAMLObject, Base):
+    yaml_tag = u'!Dict'
+    def __init__(self, dictionary, method, *args):
+        self.dictionary = dictionary
+        self.method = method
+        self.args = args
+    
+    def __repr__(self):
+        return "%s(array=%r)" % (self.__class__.__name__, self.dictionary)
+    
+    def run(self, dictionary=None):
+        if not hasattr(self, 'method'): 
+            self.output = None
+            return None
+        if not dictionary: dictionary = self.dictionary
+        method = getattr(self, self.method)
+        if not method:
+            self.output = None
+            return None
+        if hasattr(self, 'args'): args = self.parse_input(self.args)
+        else: args = None
+        self.output = method(dictionary, args)
+        return self.output
+    
+    def member(self, dictionary, args):
+        try:
+            return dictionary[args[0]]
+        except Exception, err:
+            return None
+    
+    def members(self, dictionary, args):
+        try:
+            return dict([(arg, dictionary[arg]) for arg in args if arg in dictionary])
+        except Exception, err:
+            return None
+    
 
 class Array(YAMLObject, Base):
     yaml_tag = u'!Array'
@@ -88,7 +125,8 @@ class Array(YAMLObject, Base):
     def __repr__(self):
         return "%s(array=%r)" % (self.__class__.__name__, self.arr)
     
-    def run(self):
+    def run(self, arr=None):
+        if not arr: arr = self.arr
         if not hasattr(self, 'method'): 
             self.output = None
             return None
@@ -96,7 +134,7 @@ class Array(YAMLObject, Base):
         if not method:
             self.output = None
             return None
-        arr = self.parse_input(self.arr)
+        arr = self.parse_input(arr)
         if hasattr(self, 'args'): args = self.parse_input(self.args)
         else: args = None
         self.output = method(arr, args)
@@ -136,10 +174,11 @@ class String(YAMLObject, Base):
     def __repr__(self):
         return "%s(base_str=%r)" % (self.__class__.__name__, self.base_str)
     
-    def run(self):
+    def run(self, args=None):
         self.iterate_callables()
+        if not args: args = self.args
         try:
-            args = self.parse_input(self.args)
+            args = self.parse_input(args)
             self.output = self.base_str%args
         except:
             self.output = self.base_str
@@ -154,10 +193,11 @@ class ConvertCNToNumber(YAMLObject, Base):
     def __repr__(self):
         return "%s(string=%r)" % (self.__class__.__name__, self.string)
     
-    def run(self):
+    def run(self, string=None):
+        if not string: string = self.string
         base = ("零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "百", "千", "万", "亿")
         self.flag = self.wan = self.yi = 1
-        self.output = self.getResult(self.string)
+        self.output = self.getResult(string)
         return self.output
     
     def getCharNo(self, char):
@@ -208,8 +248,9 @@ class ConvertToDatetime(YAMLObject, Base):
     def __repr__(self):
         return "%s(string=%r)" % (self.__class__.__name__, self.string)
     
-    def run(self):
-        string = self.parse_input(self.string)
+    def run(self, string=None):
+        if not string: string = self.string
+        string = self.parse_input(string)
         try:
             self.output = dateParse(self.formatInputString(string))
         except:
@@ -229,8 +270,8 @@ class StripTags(YAMLObject, Base):
     def __repr__(self):
         return "%s(string=%r)" % (self.__class__.__name__, self.string)
     
-    def run(self):
-        string = self.string
+    def run(self, string=None):
+        if not string: string = self.string
         for tag in ('head', 'style', 'script', 'object', 'embed', 'applet', 'noframes', 'noscript', 'noembed'):
             pattern = re.compile('<%s*?>.*?</%s>' % (tag, tag), re.S|re.I|re.U)
             string = re.sub(pattern, ' ', string)
@@ -249,9 +290,10 @@ class MarkDown(YAMLObject, Base):
     def __repr__(self):
         return "%s(string=%r)" % (self.__class__.__name__, self.string)
     
-    def run(self):
+    def run(self, string=None):
+        if not string: string = self.string
         self.iterate_callables()
-        self.output = striptags(self.string)
+        self.output = striptags(string)
         return self.output
 
 
@@ -264,8 +306,10 @@ class Hash(YAMLObject, Base):
     def __repr__(self):
         return "%s(string=%r)" % (self.__class__.__name__, self.string)
     
-    def run(self):
+    def run(self, string=None):
+        if not string: string = self.string
         self.iterate_callables()
+        method = self.method
         if method=='md5':
             self.output = hashlib.md5(string).hexdigest()
         elif method=='sha1':
@@ -277,3 +321,32 @@ class Hash(YAMLObject, Base):
         elif method=='sha512':
             self.output = hashlib.sha512(string).hexdigest()
         return self.output
+
+
+class DateTime(YAMLObject, Base):
+    yaml_tag = u'!DateTime'
+    def __init__(self, arg, method):
+        self.arg = arg
+        self.method = method
+    
+    def __repr__(self):
+        return "%s(string=%r)" % (self.__class__.__name__, self.arg)
+    
+    def run(self, arg=None):
+        if not arg: arg = self.arg
+        self.iterate_callables()
+        method = getattr(self, self.method)
+        if not method:
+            self.output = None
+            return None
+        self.output = method(arg)
+        return self.output
+    
+    def now(self, arg=None):
+        return datetime.timetuple(datetime.utcnow())
+    
+    def timestamp(self, arg=None):
+        if arg and isinstance(arg, time.struct_time):
+            return time.mktime(arg)
+        else:
+            return time.mktime(self.now())

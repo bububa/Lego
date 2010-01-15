@@ -6,7 +6,7 @@ Helpers.py
 Created by Syd on 2009-11-07.
 Copyright (c) 2009 __ThePeppersStudio__. All rights reserved.
 """
-
+import re
 import sys
 import os
 import signal
@@ -332,8 +332,8 @@ class DB:
         for k, v in data.iteritems():
             if isinstance(v, unicode): v = v.encode('utf-8').decode('latin-1')
             elif isinstance(v, str): v = v.decode('latin-1')
-            elif type(v) == type(datetime.datetime.utcnow()): v = strftime("%Y-%m-%d %X", datetime.timetuple(v))
-            elif type(v) == type(time.localtime()): v = strftime("%Y-%m-%d %X", v)
+            elif type(v) == type(datetime.datetime.utcnow()): v = time.strftime("%Y-%m-%d %X", datetime.timetuple(v))
+            elif type(v) == type(time.localtime()): v = time.strftime("%Y-%m-%d %X", v)
             keys.append(k)
             values.append(v)
         if not conn: conn = self.re_connect(is_persist)
@@ -360,8 +360,8 @@ class DB:
         for k, v in data.iteritems():
             if isinstance(v, unicode): v = v.encode('utf-8').decode('latin-1')
             elif isinstance(v, str): v = v.decode('latin-1')
-            elif type(v) == type(datetime.datetime.utcnow()): v = strftime("%Y-%m-%d %X", datetime.timetuple(v))
-            elif type(v) == type(time.localtime()): v = strftime("%Y-%m-%d %X", v)
+            elif type(v) == type(datetime.datetime.utcnow()): v = time.strftime("%Y-%m-%d %X", datetime.timetuple(v))
+            elif type(v) == type(time.localtime()): v = time.strftime("%Y-%m-%d %X", v)
             keys.append(k + '=%s')
             values.append(v)
         if not conn: conn = self.re_connect(is_persist)
@@ -442,3 +442,36 @@ class Converter:
             return 0
         else:
             return 0
+    
+
+def WrapperParser(content, wrapper_pattern, user_info=None, miss_fields_func=None):
+    wrapper = {}
+    if isinstance(wrapper_pattern, dict):
+        for k, v in wrapper_pattern.iteritems():
+            pattern = re.compile(v, re.S)
+            res = pattern.findall(content)
+            if not res: continue
+            if len(res) > 1: wrapper[k] = [r.strip() for r in res]
+            else: wrapper[k] = res[0].strip()
+    else:
+        pattern = re.compile('.*%s'%wrapper_pattern, re.S)
+        wrapper = pattern.match(content)
+        if wrapper: 
+            wrapper = wrapper.groupdict()
+            if not wrapper:
+                pattern = re.compile(wrapper_pattern, re.S)
+                res = pattern.findall(content)
+                if not res: wrapper = {}
+                elif len(res) > 1: wrapper = [r.strip() for r in res]
+                else: wrapper = res[0].strip()
+    if not wrapper: return None
+    if isinstance(wrapper, dict):
+        if user_info:
+            for k, v in user_info.iteritems():
+                wrapper[k] = v
+        for k, v in wrapper.items():
+            if k.endswith('_number') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toNumber(v)
+            elif k.endswith('_datetime') or k.endswith('_at') or k.endswith('_on') and isinstance(v, (str, unicode)): wrapper[k] = Converter.toDatetime(v)
+            elif isinstance(v, (str, unicode)): wrapper[k] = v.strip()
+        if miss_fields_func and miss_fields_func(wrapper): return None
+    return wrapper

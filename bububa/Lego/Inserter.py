@@ -10,6 +10,7 @@ Copyright (c) 2009 __ThePeppersStudio__. All rights reserved.
 import time
 from hashlib import md5
 from datetime import datetime
+import logging
 try:
     import cPickle as pickle
 except:
@@ -56,14 +57,16 @@ class BaseInserter(YAMLObject, Base):
 
 class IterateInserter(YAMLObject, Base):
     yaml_tag = u'!IterateInserter'
-    def __init__(self, host, port, user, passwd, db, table, keys=None, callback=None, debug=None):
+    def __init__(self, host, port, user, passwd, db, table, query, keys=None, user_info=None, callback=None, debug=None):
         self.host = host
         self.port = port
         self.user = user
         self.passwd = passwd
         self.db = db
         self.table = table
+        self.query = query
         self.keys = keys
+        self.user_info = user_info
         self.callback = callback
         self.debug = debug
     
@@ -72,44 +75,93 @@ class IterateInserter(YAMLObject, Base):
     
     def run(self):
         self.iterate_callables(exceptions='callback')
+        if hasattr(self, 'logger'):
+            self.setup_logger(self.logger['filename'])
         self.output = []
-        for page in Page.all({'in_database':0}):
-            db = DB(self.host, self.port, self.user, self.passwd, self.db, self.table)
-            data = page['wrapper']
-            data['url'] = page['url']
-            data['effective_url'] = page['effective_url']
-            data['inserted_at'] = page['inserted_at']
-            data['last_updated_at'] = page['last_updated_at']
-            data['updated_times'] = page['updated_times']
-            data['rank'] = page['rank']
-            data['label'] = page['label']
-            data['url_hash'] = page['url_hash']
-            if hasattr(self, 'keys') and self.keys.has_key('mongo_keys'):
-                if self.keys.has_key('db_keys'):
-                    data = [{d:data[m]} for m, d in zip(self.keys['mongo_keys'], self.keys['db_keys']) if m in data]
-                else:
-                    data = [data[k] for k in self.keys['mongo_keys'] if k in data]
-            
-            try:
-                last_id = db.insert(data)
-            except:
+        max_pages = 100
+        while True:
+            pages = [p for p in Page.all(self.query).limit(max_pages)]
+            for page in pages:
+                db = DB(self.host, self.port, self.user, self.passwd, self.db, self.table)
+                if not page['wrapper']: 
+                    if hasattr(self, 'log'): self.log.warn('No wrapper result provided')
+                    self.save_page(page['_id'], -1)
+                    continue
+                wrapper = pickle.loads(page['wrapper'].encode('utf-8'))
+                if isinstance(wrapper, dict): data = wrapper
+                else: data['wrapper'] = wrapper
+                data['url'] = page['url']
+                data['effective_url'] = page['effective_url']
+                data['inserted_at'] = page['inserted_at']
+                data['last_updated_at'] = page['last_updated_at']
+                data['updated_times'] = page['updated_times']
+                data['rank'] = page['rank']
+                data['label'] = page['label']
+                data['url_hash'] = page['url_hash']
+                if hasattr(self, 'keys') and self.keys.has_key('mongo_keys'):
+                    new_data = {}
+                    if self.keys.has_key('db_keys'):
+                        #data = [{d:data[m]} for m, d in zip(self.keys['mongo_keys'], self.keys['db_keys']) if m in data]
+                        for m, d in zip(self.keys['mongo_keys'], self.keys['db_keys']):
+                            if m not in data: continue
+                            if isinstance(data[m], (str, unicode)): new_data[d] = data[m]
+                            else: new_data[d] = simplejson.dumps(data[m])
+                    else:
+                        #data = [data[k] for k in self.keys['mongo_keys'] if k in data]
+                        for k in self.keys['mongo_keys']:
+                            if k not in data: continue
+                            if isinstance(data[k], (str, unicode)): new_data[k] = data[k]
+                            else: new_data[d] = simplejson.dumps(data[k])
+                    data = new_data
+                
+                if hasattr(self, 'user_info') and self.user_info:
+                    data.update(self.user_info)
+                if hasattr(self, 'furthure') and self.furthure:
+                    data.update(self.furthure_parser(data))
                 try:
-                    last_id = db.update(data, "url_hash='%s'"%data['url_hash'])
+                    last_id = db.insert(data)
                 except:
-                    last_id = None
-            if last_id:
-                self.output.append(last_id)
-                page['in_database'] = last_id
-                page.save()
-            elif hasattr(self, 'debug') and self.debug:
-                raise InserterError("!IterateInserter: failed to insert.\n%r"%data)
+                    try:
+                        last_id = db.update(data, "url_hash='%s'"%data['url_hash'])
+                        lid = last_id
+                    except:
+                        last_id = None
+                        lid = -1
+                        pid = page['_id']
+                        self.save_page(pid, lid)
+                if last_id:
+                    self.output.append(last_id)
+                    pid = page['_id']
+                    self.save_page(pid, last_id)
+                elif hasattr(self, 'debug') and self.debug:
+                    raise InserterError("!IterateInserter: failed to insert.\n%r"%data)
+            if not pages: break
+                
         try:
             self.callback.run()
         except:
             if hasattr(self, 'debug') and self.debug:
                 raise InserterError("!IterateInserter: failed during callback.\n%r"%Traceback())
         return self.output
-
+    
+    def save_page(self, pid, last_id, retry=30):
+        last_id = int(last_id)
+        while retry:
+            try:
+                pageObj = Page.get_from_id(pid)
+                pageObj['in_database'] = last_id
+                pageObj.save()
+                break
+            except:
+                retry -= 1
+                continue
+        
+        if hasattr(self, 'log'): 
+            if last_id == -1:
+                self.log.error('Fail to insert or update %s, %d'%(pid, int(last_id)))
+            else:
+                self.log.info('Inserted %s, %d'%(pid, int(last_id)))
+    
 
 class IDFUpdater(YAMLObject, Base):
     yaml_tag = u'!IDFUpdater'

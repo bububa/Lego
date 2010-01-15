@@ -9,6 +9,7 @@ Copyright (c) 2009 __ThePeppersStudio__. All rights reserved.
 
 import sys
 import os
+import logging
 from yaml import YAMLObject
 from yaml import YAMLError
 from yaml import load, dump
@@ -28,6 +29,7 @@ from bububa.Lego.Collective import *
 from bububa.Lego.Inserter import *
 
 
+
 class Lego(YAMLObject, Base):
     yaml_tag = u'!Lego'
     def __init__(self, yaml_file):
@@ -38,9 +40,12 @@ class Lego(YAMLObject, Base):
         
     def run(self, yaml_file=None):
         if not yaml_file: yaml_file = self.yaml_file
+        if hasattr(self, 'logger'):
+            self.setup_logger(self.logger['filename'])
         data = self.read_yaml_file(yaml_file)
         if not data.has_key('run'):
-            raise LegoError('No steps defined in YAML file: %r'%yaml_file)
+            if hasattr(self, 'log'): self.log.error('No "run" defined in YAML file: %r'%yaml_file)
+            raise LegoError('No "run" defined in YAML file: %r'%yaml_file)
         data['run'].run()
         self.output = data['run'].output
         return self.output
@@ -52,16 +57,39 @@ class Lego(YAMLObject, Base):
             stream = fp.read()
             fp.close()
         except IOError, err:
+            if hasattr(self, 'log'): self.log.error("Can't open YAML file: %r"%yaml_file)
             raise LegoError("Can't open YAML file: %r"%yaml_file)
         try:
             data = load(stream, Loader=Loader)
         except YAMLError, exc:
             if hasattr(exc, 'problem_mark'):
                 mark = exc.problem_mark
+                if hasattr(self, 'log'): self.log.exception("YAMLError position: (%s:%s)\nYAML file: %r" % (mark.line+1, mark.column+1, yaml_file))
                 raise LegoError("YAMLError position: (%s:%s)\nYAML file: %r" % (mark.line+1, mark.column+1, yaml_file))
         if not data:
+            if hasattr(self, 'log'): self.log.error("Empty YAML file: %r"%yaml_file)
             raise LegoError("Empty YAML file: %r"%yaml_file)
         return data
+    
+
+class Init(YAMLObject, Base):
+    yaml_tag = u'!Init'
+    def __init__(self, obj, inputs, params=None):
+        self.obj = obj
+        self.inputs = inputs
+        self.params = params
+
+    def __repr__(self):
+        return "%s(obj=%r)" % (self.__class__.__name__, self.obj)
+
+    def run(self, inputs=None):
+        if not inputs: inputs = self.inputs
+        ins = self.obj.__class__()
+        if hasattr(self, 'params') and self.params:
+            ins.default_params(self.params)
+        self.output = ins.run(inputs)
+        return self.output
+    
 
 class LegoError(Exception):
     
