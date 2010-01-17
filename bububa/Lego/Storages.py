@@ -49,7 +49,7 @@ class File(YAMLObject, Base):
             if hasattr(self, 'debug') and self.debug:
                 raise StorageError("!File: invalid method.\n%r"%self.method)
             self.output = None
-        elif hasattr(self, 'data'): self.output = method(self.filename, data)
+        elif hasattr(self, 'data'): self.output = method(self.filename, self.data)
         else: self.output = method(self.filename)
         return self.output
         
