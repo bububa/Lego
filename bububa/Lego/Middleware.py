@@ -146,6 +146,12 @@ class Array(YAMLObject, Base):
         except Exception, err:
             return None
     
+    def join(self, arr, args):
+        try:
+            return args[0].join(arr)
+        except Exception, err:
+            return None
+    
     def slice(self, arr, args):
         try:
             return arr[int(args[0]):int(args[1])]
@@ -164,6 +170,40 @@ class Array(YAMLObject, Base):
         except:
             return None
 
+class JSON(YAMLObject, Base):
+    yaml_tag = u'!JSON'
+    def __init__(self, arg, method):
+        self.arg = arg
+        self.method = method
+
+    def __repr__(self):
+        return "%s(arg=%r)" % (self.__class__.__name__, self.arg)
+
+    def run(self, arg=None):
+        if not arg: arg = self.arg
+        if not hasattr(self, 'method'): 
+            self.output = None
+            return None
+        method = getattr(self, self.method)
+        if not method:
+            self.output = None
+            return None
+        arg = self.parse_input(arg)
+        self.output = method(arg)
+        return self.output
+
+    def encode(self, arg):
+        try:
+            return simplejson.dumps(arg)
+        except:
+            return None
+
+    def decode(self, arg):
+        try:
+            return simplejson.loads(arg)
+        except:
+            return None
+    
 
 class String(YAMLObject, Base):
     yaml_tag = u'!String'
