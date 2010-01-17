@@ -8,6 +8,7 @@ Copyright (c) 2009 __ThePeppersStudio__. All rights reserved.
 """
 import os
 import re
+import subprocess
 import random
 from hashlib import md5
 import time
@@ -213,7 +214,7 @@ class PaginateCrawler(YAMLObject, Base):
     def fetch(self, url):
         if hasattr(self, 'log'): self.log.info('mario: %s'%url)
         if hasattr(self, 'proxies') and self.proxies: 
-            retry = 3
+            retry = 5
             while retry:
                 mario = Mario()
                 mario.set_proxies_list(self.proxies)
@@ -379,7 +380,7 @@ class URLCrawler(YAMLObject, Base):
     def fetch(self, url):
         if hasattr(self, 'log'): self.log.info('mario: %s'%url)
         if hasattr(self, 'proxies') and self.proxies: 
-            retry = 3
+            retry = 5
             while retry:
                 mario = Mario()
                 mario.set_proxies_list(self.proxies)
@@ -499,7 +500,7 @@ class URLsFinder(YAMLObject, Base):
     
     def fetch(self, url, label, depth):
         if hasattr(self, 'proxies') and self.proxies: 
-            retry = 3
+            retry = 5
             while retry:
                 mario = Mario()
                 mario.set_proxies_list(self.proxies)
@@ -598,8 +599,8 @@ class DetailCrawler(YAMLObject, Base):
                     #if hasattr(self, 'debug') and self.debug:
                     #    raise CrawlerError("!DetailCrawler: during callback.\n%r"%Traceback())
                     pass
+            if hasattr(self, 'sleep') and self.sleep and self.tmp_pages[page_num]: time.sleep(self.sleep)
             self.tmp_pages[page_num] = None
-            if hasattr(self, 'sleep') and self.sleep: time.sleep(self.sleep)
         self.contents = None
         del(self.contents)
         if not self.output: self.output = page_count
@@ -653,7 +654,7 @@ class DetailCrawler(YAMLObject, Base):
     def thread_fetch(self, url, page_num):
         if hasattr(self, 'log'): self.log.info('fetch url: %s in page: %d'%(url, int(page_num)))
         if hasattr(self, 'proxies') and self.proxies: 
-            retry = 3
+            retry = 5
             while retry:
                 mario = Mario()
                 mario.set_proxies_list(self.proxies)
@@ -889,32 +890,35 @@ class SubprocessLego(YAMLObject, Base):
         else: concurrent = 10
         total_processes = len(self.yaml_files)
         yaml_files = self.yaml_files
-        running_processes = {}
+        running_process = {}
+        self.output = []
         for yaml_file in yaml_files:
             while len(running_process) >= concurrent:
                 running_process = self.recycle(running_process)
             if isinstance(self.callback, dict) and self.callback.has_key('cmd') and self.callback.has_key('timeout'):
-                cmd = 'nohup %s %s > /dev/null &'%(self.callback['cmd'], yaml_file)
+                cmd = '%s -c %s'%(self.callback['cmd'], yaml_file)
                 timeout = self.callback['cmd']
             else:
-                cmd = 'nohup %s %s > /dev/null &'%(self.callback, yaml_file)
+                cmd = '%s -c %s'%(self.callback, yaml_file)
                 timeout = 0
             if hasattr(self, 'log'): self.log.info(cmd)
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            running_processes[cmd] = {'process':p, 'starttime': datetime.datetime.now(), 'timeout':timeout}
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            running_process[cmd] = {'process':p, 'starttime': datetime.now(), 'timeout':timeout}
+        while running_process:
+            running_process = self.recycle(running_process)
         return self.output
     
     def recycle(self, running_process):
         if not running_process: return []
         remove_cmd = []
         for cmd, process in running_process.items():
-            if process['process'].poll() is None: 
+            if process['process'].poll() != None: 
                 remove_cmd.append(cmd)
                 self.output.append((cmd, process['process'].stdout.read()))
             if not process['timeout']: continue
             start = process['starttime']
-            now = datetime.datetime.now()
-            if (now - start).seconds > process['timeout']:
+            now = datetime.now()
+            if process['timeout'] and (now - start).seconds > process['timeout']:
                 os.kill(process['process'].pid, signal.SIGKILL)
                 os.waitpid(-1, os.WNOHANG)
                 remove_cmd.append(cmd)
@@ -922,7 +926,7 @@ class SubprocessLego(YAMLObject, Base):
         if not remove_cmd: return running_process
         for cmd in remove_cmd:
             if hasattr(self, 'log'): self.log.info('Recycle: %s'%cmd)
-            running_process.remove(cmd)
+            running_process.pop(cmd)
         return running_process
     
 

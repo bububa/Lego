@@ -8,6 +8,7 @@ Copyright (c) 2009 __ThePeppersStudio__. All rights reserved.
 """
 
 import re
+import subprocess
 import datetime, time
 from yaml import YAMLObject
 from bububa.Lego.Base import Base
@@ -31,31 +32,33 @@ class Subprocess(YAMLObject, Base):
         else: concurrent = 10
         total_processes = len(processes)
         processes = self.processes
-        running_processes = {}
+        running_process = {}
         for process in processes:
             while len(running_process) >= concurrent:
                 running_process = self.recycle(running_process)
             if isinstance(process, dict) and process.has_key('cmd') and process.has_key('timeout'):
-                cmd = 'nohup %s > /dev/null &'%process['cmd']
+                cmd = process['cmd']
                 timeout = process['cmd']
             else:
-                cmd = 'nohup %s > /dev/null &'%process
+                cmd = process
                 timeout = 0
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            running_processes[cmd] = {'process':p, 'starttime': datetime.datetime.now(), 'timeout':timeout}
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            running_process[cmd] = {'process':p, 'starttime': datetime.datetime.now(), 'timeout':timeout}
+        while running_process:
+            running_process = self.recycle(running_process)
         return self.output
     
     def recycle(self, running_process):
         if not running_process: return []
         remove_cmd = []
         for cmd, process in running_process.items():
-            if process['process'].poll() is None: 
+            if process['process'].poll() != None: 
                 remove_cmd.append(cmd)
                 self.output.append((cmd, process['process'].stdout.read()))
             if not process['timeout']: continue
             start = process['starttime']
             now = datetime.datetime.now()
-            if (now - start).seconds > process['timeout']:
+            if process['timeout'] and (now - start).seconds > process['timeout']:
                 os.kill(process['process'].pid, signal.SIGKILL)
                 os.waitpid(-1, os.WNOHANG)
                 remove_cmd.append(cmd)
