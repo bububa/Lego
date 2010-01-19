@@ -36,7 +36,7 @@ from bububa.SuperMario.Parser import FullRssParser
 
 class BaseCrawler(YAMLObject, Base):
     yaml_tag = u'!BaseCrawler'
-    def __init__(self, starturl=None, url_pattern=None, duplicate_pattern=None, wrapper=None, max_depth=0, callback=None, executable=None, debug=None):
+    def __init__(self, starturl=None, url_pattern=None, duplicate_pattern=None, wrapper=None, max_depth=0, callback=None, executable=None, login=None, debug=None):
         self.starturl = starturl
         self.url_pattern = url_pattern
         self.duplicate_pattern = duplicate_pattern
@@ -44,6 +44,7 @@ class BaseCrawler(YAMLObject, Base):
         self.max_depth = max_depth
         self.callback = callback
         self.executable = executable
+        self.login = login
         self.debug = debug
     
     def __repr__(self):
@@ -58,8 +59,17 @@ class BaseCrawler(YAMLObject, Base):
         self.inner_duplicate_urls = []
         self.new_urls = []
         self.contents = []
-        mario = Mario(callback=self.parser)
-        mario.get(starturl)
+        if hasattr(self, 'login') and self.login:
+            mario = Mario()
+            mario.set_login(self.login['params'])
+            mario.get(self.login['url'])
+            cookies = mario.cookies
+            mario = Mario(callback=self.parser)
+            mario.set_cookies(cookies)
+            mario.get(starturl)
+        else:
+            mario = Mario(callback=self.parser)
+            mario.get(starturl)
         if not self.output: 
             if hasattr(self, 'debug') and self.debug:
                 raise CrawlerError("!BaseCrawler: failed to fetch starturl.\nurl: %s"%self.starturl)
@@ -85,7 +95,15 @@ class BaseCrawler(YAMLObject, Base):
         return self.output
     
     def fetch(self, links):
-        mario = MarioBatch(callback = self.parser)
+        if hasattr(self, 'login') and self.login:
+            mario = Mario()
+            mario.set_login(self.login['params'])
+            mario.get(self.login['url'])
+            cookies = mario.cookies
+            mario = MarioBatch(callback = self.parser)
+            mario.set_cookies(cookies)
+        else:
+            mario = MarioBatch(callback = self.parser)
         for link in links:
             mario.add_job(link)
         mario(10)
@@ -143,7 +161,7 @@ class BaseCrawler(YAMLObject, Base):
 
 class PaginateCrawler(YAMLObject, Base):
     yaml_tag = u'!PaginateCrawler'
-    def __init__(self, url_pattern=None, start_no=None, end_no=None, step=None, wrapper=None, multithread=None, callback=None, executable=None, proxies=None, sleep=None, debug=None):
+    def __init__(self, url_pattern=None, start_no=None, end_no=None, step=None, wrapper=None, multithread=None, callback=None, executable=None, proxies=None, login=None, sleep=None, debug=None):
         self.url_pattern = url_pattern
         self.wrapper = wrapper
         self.start_no = start_no
@@ -153,6 +171,8 @@ class PaginateCrawler(YAMLObject, Base):
         self.executable = executable
         self.proxies = proxies
         self.multithread = multithread
+        self.login = login
+        self.cookies = None
         self.sleep = sleep
         self.debug = debug
     
@@ -171,6 +191,11 @@ class PaginateCrawler(YAMLObject, Base):
         if hasattr(self, 'proxies') and self.proxies: proxies = self.proxies
         else: proxies = None
         links = [pattern.sub(str(no), self.url_pattern) for no in xrange(self.start_no, (self.end_no + 1)*step, step)]
+        if hasattr(self, 'login') and self.login:
+            mario = Mario()
+            mario.set_login(self.login['params'])
+            mario.get(self.login['url'])
+            self.cookies = mario.cookies
         if hasattr(self, 'multithread') and self.multithread:
             max_chunk = random.choice(range(5,10))
             total_workers = len(links)
@@ -183,10 +208,12 @@ class PaginateCrawler(YAMLObject, Base):
             if len(links) == 1:
                 mario = Mario()
                 mario.set_proxies_list(proxies)
+                if hasattr(self, 'cookies') and self.cookies: mario.set_cookies(self.cookies)
                 if hasattr(self, 'log'): self.log.info('mario: %s'%links[0])
                 self.fetch(links[0])
             else:
                 mario = MarioBatch(callback = self.parser)
+                if hasattr(self, 'cookies') and self.cookies: mario.set_cookies(self.cookies)
                 mario.set_proxies_list(proxies)
                 for url in iter(links):
                     if hasattr(self, 'log'): self.log.info('mario: %s'%url)
@@ -217,6 +244,7 @@ class PaginateCrawler(YAMLObject, Base):
             retry = 5
             while retry:
                 mario = Mario()
+                if hasattr(self, 'cookies') and self.cookies: mario.set_cookies(self.cookies)
                 mario.set_proxies_list(self.proxies)
                 response = mario.get(url)
                 if response: break
@@ -290,7 +318,7 @@ class ArrayParser(YAMLObject, Base):
 
 class URLCrawler(YAMLObject, Base):
     yaml_tag = u'!URLCrawler'
-    def __init__(self, urls=None, wrapper=None, url_pattern=None, duplicate_pattern=None, essential_fields=None, remove_external_duplicate=None, multithread=True, save_output=None, user_info=None, sleep=None, callback=None, proxies=None, debug=None):
+    def __init__(self, urls=None, wrapper=None, url_pattern=None, duplicate_pattern=None, essential_fields=None, remove_external_duplicate=None, multithread=True, save_output=None, user_info=None, sleep=None, callback=None, proxies=None, login=None, debug=None):
         self.urls = urls
         self.url_pattern = url_pattern
         self.duplicate_pattern = duplicate_pattern
@@ -303,6 +331,8 @@ class URLCrawler(YAMLObject, Base):
         self.callback = callback
         self.sleep = sleep
         self.proxies = proxies
+        self.login = login
+        self.cookies = None
         self.debug = debug
     
     def __repr__(self):
@@ -348,6 +378,11 @@ class URLCrawler(YAMLObject, Base):
             if hasattr(self, 'debug') and self.debug:
                 raise CrawlerError("!URLCrawler: no links need to be crawled")
             return self.output
+        if hasattr(self, 'login') and self.login:
+            mario = Mario()
+            mario.set_login(self.login['params'])
+            mario.get(self.login['url'])
+            self.cookies = mario.cookies
         if hasattr(self, 'multithread') and self.multithread:
             max_chunk = random.choice(range(5,10))
             total_workers = len(links)
@@ -358,7 +393,6 @@ class URLCrawler(YAMLObject, Base):
             self.contents = None
         else:
             if len(links) == 1:
-                mario = Mario()
                 if hasattr(self, 'log'): self.log.info('mario: %s'%links[0])
                 self.fetch(links[0])
             else:
@@ -383,6 +417,7 @@ class URLCrawler(YAMLObject, Base):
             retry = 5
             while retry:
                 mario = Mario()
+                if hasattr(self, 'cookies') and self.cookies: mario.set_cookies(self.cookies)
                 mario.set_proxies_list(self.proxies)
                 response = mario.get(url)
                 if response: break
@@ -443,7 +478,7 @@ class URLCrawler(YAMLObject, Base):
 
 class URLsFinder(YAMLObject, Base):
     yaml_tag = u'!URLsFinder'
-    def __init__(self, starturl=None, label=None, target_url=None, url_pattern=None, max_depth=0, callback=None, proxies=None, debug=None):
+    def __init__(self, starturl=None, label=None, target_url=None, url_pattern=None, max_depth=0, callback=None, proxies=None, login=None, debug=None):
         self.starturl = starturl
         self.target_url = target_url
         self.url_pattern = url_pattern
@@ -451,6 +486,8 @@ class URLsFinder(YAMLObject, Base):
         self.max_depth = max_depth
         self.callback = callback
         self.proxies = proxies
+        self.login = login
+        self.cookies = None
         self.debug = debug
     
     def __repr__(self):
@@ -461,6 +498,11 @@ class URLsFinder(YAMLObject, Base):
         if not label: label = self.label
         self.iterate_callables(exceptions=('callback'))
         self.output = []
+        if hasattr(self, 'login') and self.login:
+            mario = Mario()
+            mario.set_login(self.login['params'])
+            mario.get(self.login['url'])
+            self.cookies = mario.cookies
         if hasattr(self, 'url_pattern'): url_pattern = self.url_pattern
         else: url_pattern = ''
         pattern = re.compile(url_pattern, re.I)
@@ -503,12 +545,14 @@ class URLsFinder(YAMLObject, Base):
             retry = 5
             while retry:
                 mario = Mario()
+                if hasattr(self, 'cookies') and self.cookies: mario.set_cookies(self.cookies)
                 mario.set_proxies_list(self.proxies)
                 response = mario.get(url)
                 if response: break
                 retry -= 1
         else:
             mario = Mario()
+            if hasattr(self, 'cookies') and self.cookies: mario.set_cookies(self.cookies)
             response = mario.get(url)
         if not response: return
         if hasattr(self, 'url_pattern'): url_pattern = self.url_pattern
@@ -557,7 +601,7 @@ class URLsFinder(YAMLObject, Base):
 
 class DetailCrawler(YAMLObject, Base):
     yaml_tag = u'!DetailCrawler'
-    def __init__(self, pages=None, url_pattern=None, wrapper=None, essential_fields=None, user_info=None, remove_external_duplicate=None, multithread=True, save_output=None, sleep=None, callback=None, page_callback=None, proxies=None, debug=None):
+    def __init__(self, pages=None, url_pattern=None, wrapper=None, essential_fields=None, user_info=None, remove_external_duplicate=None, multithread=True, save_output=None, sleep=None, callback=None, page_callback=None, proxies=None, login=None, debug=None):
         self.pages = pages
         self.url_pattern = url_pattern
         self.essential_fields = essential_fields
@@ -570,6 +614,8 @@ class DetailCrawler(YAMLObject, Base):
         self.page_callback = page_callback
         self.sleep = sleep
         self.proxies = proxies
+        self.login = login
+        self.cookies = None
         self.debug = debug
     
     def __repr__(self):
@@ -585,6 +631,11 @@ class DetailCrawler(YAMLObject, Base):
                 raise CrawlerError("!DetailCrawler: no pages need to be crawled.")
             return self.output
         self.contents = []
+        if hasattr(self, 'login') and self.login:
+            mario = Mario()
+            mario.set_login(self.login['params'])
+            mario.get(self.login['url'])
+            self.cookies = mario.cookies
         page_count = 0
         for i, page in enumerate(self.pages):
             page_num = str(i)
@@ -632,11 +683,13 @@ class DetailCrawler(YAMLObject, Base):
         else:
             if len(links) == 1:
                 mario = Mario()
+                if hasattr(self, 'cookies') and self.cookies: mario.set_cookies(self.cookies)
                 self.thread_fetch(links[0], page_num)
             else:
                 if hasattr(self, 'proxies') and self.proxies: proxies = self.proxies
                 else: proxies = None
                 mario = MarioBatch(callback = self.parser)
+                if hasattr(self, 'cookies') and self.cookies: mario.set_cookies(self.cookies)
                 mario.set_proxies_list(proxies)
                 for link in set(links):
                     mario.add_job(link)
@@ -657,6 +710,7 @@ class DetailCrawler(YAMLObject, Base):
             retry = 5
             while retry:
                 mario = Mario()
+                if hasattr(self, 'cookies') and self.cookies: mario.set_cookies(self.cookies)
                 mario.set_proxies_list(self.proxies)
                 response = mario.get(url)
                 if response: break
