@@ -438,6 +438,7 @@ class URLCrawler(YAMLObject, Base):
         if hasattr(self, 'furthure'):
             furthure = self.furthure_parser(wrapper)
             if furthure: wrapper.update(furthure)
+        if not wrapper: return
         content = md5(repr(wrapper)).hexdigest()
         if content in self.contents: return
         self.contents.append(content)
@@ -669,6 +670,7 @@ class DetailCrawler(YAMLObject, Base):
         if not links: 
             if hasattr(self, 'log'): self.log.warning('no links in page: %s after remove unmatched links'%page['effective_url'])
             return 0
+        links = list(set(links))
         if hasattr(self, 'remove_external_duplicate') and self.remove_external_duplicate:
             links = [link for link in links if not self.is_external_duplicate(link)]
         if not links: 
@@ -731,6 +733,7 @@ class DetailCrawler(YAMLObject, Base):
         if hasattr(self, 'furthure'):
             furthure = self.furthure_parser(wrapper)
             if furthure: wrapper.update(furthure)
+        if not wrapper: return
         content = md5(repr(wrapper)).hexdigest()
         if content in self.contents: 
             if hasattr(self, 'log'): self.log.warn('Duplicate content: %s'%response.url)
