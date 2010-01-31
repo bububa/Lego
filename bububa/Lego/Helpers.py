@@ -270,7 +270,7 @@ def timeout_command(command, timeout):
 
 
 class DB:
-    def __init__(self, host, port, user, passwd, db, table):
+    def __init__(self, host, port, user, passwd, db, table=None):
         self.host = host
         self.port = port
         self.user = user
@@ -325,51 +325,54 @@ class DB:
         else: c.execute(query)
         return c.fetchall()
     
-    def insert(self, data, conn=None, is_persist=None):
+    def insert(self, data, conn=None, is_persist=None, table=None):
         if not isinstance(data, dict): return None
+        if not table: table = self.table
         keys = []
         values = []
         for k, v in data.iteritems():
             if isinstance(v, unicode): v = v.encode('utf-8').decode('latin-1')
             elif isinstance(v, str): v = v.decode('latin-1')
-            elif type(v) == type(datetime.datetime.utcnow()): v = time.strftime("%Y-%m-%d %X", datetime.timetuple(v))
+            elif type(v) == type(datetime.datetime.utcnow()): v = time.strftime("%Y-%m-%d %X", datetime.datetime.timetuple(v))
             elif type(v) == type(time.localtime()): v = time.strftime("%Y-%m-%d %X", v)
             keys.append(k)
             values.append(v)
         if not conn: conn = self.re_connect(is_persist)
         c = DB.pre_query(conn, True)
-        c.execute('INSERT INTO %s (%s) VALUES (%s)'%(self.table, ','.join(keys), ','.join(['%s'] * len(keys))), tuple(values))
+        c.execute('INSERT INTO %s (%s) VALUES (%s)'%(table, ','.join(keys), ','.join(['%s'] * len(keys))), tuple(values))
         conn.commit()
         c.close()
         conn.close()
         return c.lastrowid
     
-    def remove(self, where, conn=None, is_persist=None):
+    def remove(self, where, conn=None, is_persist=None, table=None):
         if not conn: conn = self.re_connect(is_persist)
+        if not table: table = self.table
         c = DB.pre_query(conn, True)
-        c.execute('DELETE FROM %s WHERE %s'%(self.table, where))
+        c.execute('DELETE FROM %s WHERE %s'%(table, where))
         conn.commit()
         c.close()
         conn.close()
         return None
     
-    def update(self, data, where, conn=None, is_persist=None):
+    def update(self, data, where, conn=None, is_persist=None, table=None):
         if not isinstance(data, dict): return None
+        if not table: table = self.table
         keys = []
         values = []
         for k, v in data.iteritems():
             if isinstance(v, unicode): v = v.encode('utf-8').decode('latin-1')
             elif isinstance(v, str): v = v.decode('latin-1')
-            elif type(v) == type(datetime.datetime.utcnow()): v = time.strftime("%Y-%m-%d %X", datetime.timetuple(v))
+            elif type(v) == type(datetime.datetime.utcnow()): v = time.strftime("%Y-%m-%d %X", datetime.datetime.timetuple(v))
             elif type(v) == type(time.localtime()): v = time.strftime("%Y-%m-%d %X", v)
             keys.append(k + '=%s')
             values.append(v)
         if not conn: conn = self.re_connect(is_persist)
         try:
             c = DB.pre_query(conn, True)
-            c.execute('SELECT * FROM %s WHERE %s'%(self.table, where))
+            c.execute('SELECT * FROM %s WHERE %s'%(table, where))
             last_id = c.fetchone()
-            c.execute('UPDATE %s SET %s WHERE %s'%(self.table, ','.join(keys), where), tuple(values))
+            c.execute('UPDATE %s SET %s WHERE %s'%(table, ','.join(keys), where), tuple(values))
             conn.commit()
             c.close()
             conn.close()
@@ -453,7 +456,7 @@ def WrapperParser(content, wrapper_pattern, user_info=None, miss_fields_func=Non
             if not res: continue
             if len(res) > 1: wrapper[k] = [r.strip() for r in res]
             else: wrapper[k] = res[0].strip()
-    else:
+    elif wrapper_pattern:
         pattern = re.compile('.*%s'%wrapper_pattern, re.S)
         wrapper = pattern.match(content)
         if wrapper: 
@@ -464,6 +467,8 @@ def WrapperParser(content, wrapper_pattern, user_info=None, miss_fields_func=Non
                 if not res: wrapper = {}
                 elif len(res) > 1: wrapper = [r.strip() for r in res]
                 else: wrapper = res[0].strip()
+    else:
+        wrapper = content
     if not wrapper: return None
     if isinstance(wrapper, dict):
         if user_info:
