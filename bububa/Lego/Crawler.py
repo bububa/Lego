@@ -932,26 +932,36 @@ class ThreadLego(YAMLObject, Base):
 
 class SubprocessLego(YAMLObject, Base):
     yaml_tag = u'!SubprocessLego'
-    def __init__(self, yaml_files, callback, concurrent, debug=None):
+    def __init__(self, yaml_files, callback, concurrent, endless=None, sleep=300, debug=None):
         self.yaml_files = yaml_files
         self.concurrent = concurrent
         self.callback = callback
+        self.endless = endless
+        self.sleep = sleep
     
     def __repr__(self):
         return "%s(yaml_files=%r)" % (self.__class__.__name__, self.yaml_files)
     
     def run(self):
+        self.output = []
+        self.running_process = {}
+        if hasattr(self, 'endless') and self.endless:
+            while True:
+                self.execute()
+        else:
+            self.execute()
+        return self.output
+            
+    def execute(self):
         self.iterate_callables(exceptions='callback')
         if hasattr(self, 'logger'): self.setup_logger(self.logger['filename'])
         if hasattr(self, 'concurrent'): concurrent = self.concurrent
         else: concurrent = 10
         total_processes = len(self.yaml_files)
         yaml_files = self.yaml_files
-        running_process = {}
-        self.output = []
         for yaml_file in yaml_files:
-            while len(running_process) >= concurrent:
-                running_process = self.recycle(running_process)
+            while len(self.running_process) >= concurrent:
+                self.running_process = self.recycle(self.running_process)
             if isinstance(self.callback, dict) and self.callback.has_key('cmd') and self.callback.has_key('timeout'):
                 cmd = '%s -c %s'%(self.callback['cmd'], yaml_file)
                 timeout = self.callback['cmd']
@@ -959,10 +969,13 @@ class SubprocessLego(YAMLObject, Base):
                 cmd = '%s -c %s'%(self.callback, yaml_file)
                 timeout = 0
             if hasattr(self, 'log'): self.log.info(cmd)
+            if cmd in self.running_process: continue
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-            running_process[cmd] = {'process':p, 'starttime': datetime.now(), 'timeout':timeout}
-        while running_process:
-            running_process = self.recycle(running_process)
+            self.running_process[cmd] = {'process':p, 'starttime': datetime.now(), 'timeout':timeout}
+        now = time.time()
+        while self.running_process:
+            self.running_process = self.recycle(self.running_process)
+            if hasattr(self, 'sleep') and self.sleep and time.time()-now > self.sleep: break
         return self.output
     
     def recycle(self, running_process):

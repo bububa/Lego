@@ -16,15 +16,26 @@ from bububa.Lego.Helpers import ThreadPool
 
 class Subprocess(YAMLObject, Base):
     yaml_tag = u'!Subprocess'
-    def __init__(self, processes, concurrent):
+    def __init__(self, processes, concurrent, endless=None, sleep=300):
         self.processes = processes
         self.concurrent = concurrent
+        self.endless = endless
+        self.sleep = sleep
     
     def __repr__(self):
         return "%s(processes=%r)" %(self.__class__.__name__, self.processes)
     
     def run(self):
-        self.output = None
+        self.output = []
+        self.running_process = {}
+        if hasattr(self, 'endless') and self.endless:
+            while True:
+                self.execute()
+        else:
+            self.execute()
+        return self.output
+    
+    def execute(self):
         processes = self.parse_input(self.processes)
         if not isinstance(processes, (list, set)): return None
         self.output = []
@@ -32,20 +43,21 @@ class Subprocess(YAMLObject, Base):
         else: concurrent = 10
         total_processes = len(processes)
         processes = self.processes
-        running_process = {}
         for process in processes:
-            while len(running_process) >= concurrent:
-                running_process = self.recycle(running_process)
+            while len(self.running_process) >= concurrent:
+                self.running_process = self.recycle(self.running_process)
             if isinstance(process, dict) and process.has_key('cmd') and process.has_key('timeout'):
                 cmd = process['cmd']
                 timeout = process['cmd']
             else:
                 cmd = process
                 timeout = 0
+            if cmd in self.running_process: continue
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-            running_process[cmd] = {'process':p, 'starttime': datetime.datetime.now(), 'timeout':timeout}
-        while running_process:
-            running_process = self.recycle(running_process)
+            self.running_process[cmd] = {'process':p, 'starttime': datetime.datetime.now(), 'timeout':timeout}
+        while self.running_process:
+            self.running_process = self.recycle(self.running_process)
+            if hasattr(self, 'sleep') and self.sleep and time.time()-now > self.sleep: break
         return self.output
     
     def recycle(self, running_process):
