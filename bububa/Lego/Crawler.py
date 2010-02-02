@@ -26,6 +26,7 @@ except ImportError:
 from Helpers import Converter, ThreadPool, WrapperParser
 from bububa.Lego.Base import Base
 try:
+    from bububa.Lego.MongoDB import New
     from bububa.Lego.MongoDB import Page
     from bububa.Lego.MongoDB import URLTrie
 except:
@@ -460,7 +461,7 @@ class URLCrawler(YAMLObject, Base):
     def is_external_duplicate(self, link):
         url_hash = md5(link).hexdigest().decode('utf-8')
         try:
-            return Page.get_from_id(url_hash)
+            return Page().get_from_id(url_hash)
         except:
             if hasattr(self, 'debug') and self.debug:
                 raise CrawlerError("!URLCrawler: fail to check external duplicate.\nurl: %s"%link)
@@ -512,7 +513,7 @@ class URLsFinder(YAMLObject, Base):
                 urls = [self.starturl, ]
                 self.save_links(urls, label, depth)
             else:
-                urls = [u['url'] for u in URLTrie.all({'label':label, 'depth':depth})]
+                urls = [u['url'] for u in URLTrie().find({'label':label, 'depth':depth})]
             self.depth_crawl(urls, label, depth)
         try:
             if hasattr(self, 'register'): self.callback.regist(self.register)
@@ -573,7 +574,7 @@ class URLsFinder(YAMLObject, Base):
                 continue
             while True:
                 try:
-                    urlTrie = URLTrie()
+                    urlTrie = New(URLTrie())
                     urlTrie['_id'] = ident
                     if isinstance(link, str): link = link.decode('utf-8')
                     if isinstance(label, str): label = label.decode('utf-8')
@@ -595,7 +596,7 @@ class URLsFinder(YAMLObject, Base):
     
     def is_external_duplicate(self, ident):
         try:
-            return URLTrie.get_from_id(ident)
+            return URLTrie().get_from_id(ident)
         except Exception, err:
             return None
     
@@ -638,11 +639,14 @@ class DetailCrawler(YAMLObject, Base):
             mario.get(self.login['url'])
             self.cookies = mario.cookies
         page_count = 0
+        total_pages = len(self.pages)
+        last_page_results = None
         for i, page in enumerate(self.pages):
             page_num = str(i)
             self.tmp_pages[page_num] = []
             if self.fetch(page, page_num):
                 page_count += 1
+                if i == total_pages - 1: last_page_results = True
             if hasattr(self, 'callback'):
                 try:
                     if hasattr(self, 'register'): self.callback.regist(self.register)
@@ -655,6 +659,7 @@ class DetailCrawler(YAMLObject, Base):
             self.tmp_pages[page_num] = None
         self.contents = None
         del(self.contents)
+        if last_page_results: page_count = total_pages
         if not self.output: self.output = page_count
         return self.output
     
@@ -757,7 +762,7 @@ class DetailCrawler(YAMLObject, Base):
     def is_external_duplicate(self, link):
         url_hash = md5(link).hexdigest().decode('utf-8')
         try:
-            return Page.get_from_id(url_hash)
+            return Page().get_from_id(url_hash)
         except:
             if hasattr(self, 'debug') and self.debug:
                 raise CrawlerError("!DetailCrawler: fail to check external duplicate.\nurl: %r"%link)
@@ -840,7 +845,7 @@ class FullRSSCrawler(YAMLObject, Base):
     def is_external_duplicate(self, link):
         url_hash = md5(link).hexdigest().decode('utf-8')
         try:
-            return Page.get_from_id(url_hash)
+            return Page().get_from_id(url_hash)
         except:
             if hasattr(self, 'debug') and self.debug:
                 raise CrawlerError("!FullRSSCrawler: check external duplicate url failed.\nurl: %r"%link)
@@ -950,9 +955,13 @@ class SubprocessLego(YAMLObject, Base):
                 self.execute()
         else:
             self.execute()
+        while self.running_process:
+            self.running_process = self.recycle(self.running_process)
         return self.output
             
     def execute(self):
+        sleep_time = 0
+        if hasattr(self, 'sleep') and self.sleep: sleep_time = self.sleep 
         self.iterate_callables(exceptions='callback')
         if hasattr(self, 'logger'): self.setup_logger(self.logger['filename'])
         if hasattr(self, 'concurrent'): concurrent = self.concurrent
@@ -973,13 +982,13 @@ class SubprocessLego(YAMLObject, Base):
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             self.running_process[cmd] = {'process':p, 'starttime': datetime.now(), 'timeout':timeout}
         now = time.time()
-        while self.running_process:
+        while True:
             self.running_process = self.recycle(self.running_process)
-            if hasattr(self, 'sleep') and self.sleep and time.time()-now > self.sleep: break
+            if time.time()-now > sleep_time: break
         return self.output
     
     def recycle(self, running_process):
-        if not running_process: return []
+        if not running_process: return {}
         remove_cmd = []
         for cmd, process in running_process.items():
             if process['process'].poll() != None: 

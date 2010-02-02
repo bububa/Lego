@@ -26,7 +26,7 @@ except ImportError:
     from yaml import Loader, Dumper
 from bububa.Lego.Base import Base
 try:
-    from bububa.Lego.MongoDB import Page, URLTrie
+    from bububa.Lego.MongoDB import New, Page, URLTrie
 except:
     pass
 from bububa.SuperMario.utils import Traceback
@@ -158,9 +158,9 @@ class Document(YAMLObject, Base):
         retry = 30
         while retry:
             try:
-                pageObj = Page.get_from_id(url_hash)
+                pageObj = Page().get_from_id(url_hash)
                 if not pageObj:
-                    pageObj = Page()
+                    pageObj = New(Page())
                     pageObj['_id'] = url_hash
                     pageObj.label = label
                     pageObj.url = page['url']
@@ -195,7 +195,7 @@ class Document(YAMLObject, Base):
             retry = 30
             while retry:
                 try:
-                    urlTrieObj = URLTrie.get_from_id(ident)
+                    urlTrieObj = URLTrie().get_from_id(ident)
                     if urlTrieObj:
                         urlTrieObj['in_database'] = 1
                         urlTrieObj.save()
@@ -210,7 +210,7 @@ class Document(YAMLObject, Base):
         retry = 30
         while retry:
             try:
-                pageObj = Page.get_from_id(url_hash)
+                pageObj = Page().get_from_id(url_hash)
                 break
             except:
                 retry -= 1
@@ -452,7 +452,7 @@ class URLTrieStorage(YAMLObject, Base):
         return self.output
     
     def getURLs(self, context=None):
-        return [url for url in URLTrie.all(context)]
+        return [url['url'] for url in URLTrie().find(context)]
     
 
 class StorageError(Exception):

@@ -27,7 +27,7 @@ except:
 from yaml import YAMLObject
 from bububa.Lego.Base import Base
 try:
-    from bububa.Lego.MongoDB import Keyword, Doc, KeywordCOEF, Search
+    from bububa.Lego.MongoDB import New, Keyword, Doc, KeywordCOEF, Search
 except:
     pass
 from bububa.Lego.Helpers import ThreadPool, DB
@@ -67,9 +67,9 @@ class ImportKeywords(YAMLObject, Base):
                 name_hash = md5('%s:%d'%(keyword['name'].encode('utf-8').lower(), self.siteid)).hexdigest().decode('utf-8')
             else:
                 name_hash = md5(keyword['name'].encode('utf-8').lower()).hexdigest().decode('utf-8')
-            keywordObj = Keyword.get_from_id(name_hash)
+            keywordObj = Keyword().get_from_id(name_hash)
             if keywordObj: continue
-            keywordObj = Keyword()
+            keywordObj = New(Keyword())
             keywordObj['_id'] = name_hash
             keywordObj['name'] = keyword['name']
             if 'ori_id' in keyword: keywordObj['ori_id'] = int(keyword['ori_id'])
@@ -119,8 +119,8 @@ class ImportSearches(YAMLObject, Base):
         if not docs:
             if debug: raise CollectiveError('No searches!')
         self.output = []
-        if siteid: ks = list(Keyword.all({'siteid':siteid}))
-        else: ks = list(Keyword.all())
+        if siteid: ks = list(Keyword().find({'siteid':siteid}))
+        else: ks = list(Keyword().find())
         while searches:
             threadPool = ThreadPool(chunk)
             for search in iter(searches):
@@ -153,9 +153,9 @@ class ImportSearches(YAMLObject, Base):
     def save_search(self, siteid, debug):
         for res in self.output:
             search, keywords, hits, tfs = res
-            searchObj = Search.get_from_id(search['_id'])
+            searchObj = Search().get_from_id(search['_id'])
             if not searchObj:
-                searchObj = Search()
+                searchObj = New(Search())
                 searchObj['_id'] = search['_id']
             if 'ori_id' in search: searchObj['ori_id'] = int(search['ori_id'])
             if 'vertical' in search: searchObj['vertical'] = search['vertical']
@@ -241,8 +241,8 @@ class Indexer(YAMLObject, Base):
         if not docs:
             if debug: raise CollectiveError('No docs!')
         self.output = []
-        if siteid: ks = list(Keyword.all({'siteid':siteid}))
-        else: ks = list(Keyword.all())
+        if siteid: ks = list(Keyword().find({'siteid':siteid}))
+        else: ks = list(Keyword().find())
         while docs:
             threadPool = ThreadPool(chunk)
             for doc in iter(docs):
@@ -275,9 +275,9 @@ class Indexer(YAMLObject, Base):
     def save_docs(self, siteid, debug):
         for res in self.output:
             doc, keywords, hits, tfs = res
-            docObj = Doc.get_from_id(doc['_id'])
+            docObj = Doc().get_from_id(doc['_id'])
             if not docObj:
-                docObj = Doc()
+                docObj = New(Doc())
                 docObj['_id'] = doc['_id']
             if 'ori_id' in doc: docObj['ori_id'] = int(doc['ori_id'])
             if 'vertical' in doc: docObj['vertical'] = doc['vertical']
@@ -347,8 +347,8 @@ class IDF(YAMLObject, Base):
         else: debug = None
         self.output = None
         Ddocs = self.docs_count(siteid)
-        if siteid: keywords = list(Keyword.all({'siteid':siteid}))
-        else: keywords = list(Keyword.all())
+        if siteid: keywords = list(Keyword().find({'siteid':siteid}))
+        else: keywords = list(Keyword().find())
         max_chunk = 50
         total_workers = len(keywords)
         for i in xrange(0, total_workers, max_chunk):
@@ -362,7 +362,7 @@ class IDF(YAMLObject, Base):
     def idf(self, keyword, Dd, debug):
         while True:
             try:
-                Dk = Doc.all({'keywords':keyword['_id']}).count()
+                Dk = Doc().find({'keywords':keyword['_id']}).count()
                 break
             except:
                 random_sleep(1, 3)
@@ -381,8 +381,8 @@ class IDF(YAMLObject, Base):
         keyword.save()
         
     def docs_count(self, siteid):
-        if siteid: return Doc.all({'siteid':siteid}).count()
-        return Doc.all().count()
+        if siteid: return Doc().find({'siteid':siteid}).count()
+        return Doc().find().count()
 
 
 class SIDF(YAMLObject, Base):
@@ -401,8 +401,8 @@ class SIDF(YAMLObject, Base):
         else: debug = None
         self.output = None
         Ddocs = self.searches_count(siteid)
-        if siteid: keywords = list(Keyword.all({'siteid':siteid}))
-        else: keywords = list(Keyword.all())
+        if siteid: keywords = list(Keyword().find({'siteid':siteid}))
+        else: keywords = list(Keyword().find())
         max_chunk = 50
         total_workers = len(keywords)
         Ddocs += total_workers
@@ -417,7 +417,7 @@ class SIDF(YAMLObject, Base):
     def sidf(self, keyword, Dd, debug):
         while True:
             try:
-                Dk = Search.all({'keywords':keyword['_id']}).count()
+                Dk = Search().find({'keywords':keyword['_id']}).count()
                 break
             except:
                 random_sleep(1, 3)
@@ -434,8 +434,8 @@ class SIDF(YAMLObject, Base):
         keyword.save()
 
     def searches_count(self, siteid):
-        if siteid: return Search.all({'siteid':siteid}).count()
-        return Search.all().count()
+        if siteid: return Search().find({'siteid':siteid}).count()
+        return Search().find().count()
     
 
 class COEF(YAMLObject, Base):
@@ -458,10 +458,10 @@ class COEF(YAMLObject, Base):
         else: with_searches = None
         if hasattr(self,'debug') and self.debug: debug = self.debug
         else: debug = None
-        if siteid: keywords = ({'_id':keyword['_id'], 'name':keyword['name'], 'hits':keyword['hits']} for keyword in Keyword.all({'siteid':siteid}) if keyword['idf'])
-        else: keywords = ({'_id':keyword['_id'], 'name':keyword['name'], 'hits':keyword['hits']} for keyword in Keyword.all() if keyword['idf'])
+        if siteid: keywords = ({'_id':keyword['_id'], 'name':keyword['name'], 'hits':keyword['hits']} for keyword in Keyword().find({'siteid':siteid}) if keyword['idf'])
+        else: keywords = ({'_id':keyword['_id'], 'name':keyword['name'], 'hits':keyword['hits']} for keyword in Keyword().find() if keyword['idf'])
         if hasattr(self, 'running') and self.running:
-            keywords = [k for k in keywords if not KeywordCOEF.get_from_id(k['_id'])]
+            keywords = [k for k in keywords if not KeywordCOEF().get_from_id(k['_id'])]
         max_chunk = 20
         total_workers = len(keywords)
         for i in xrange(0, total_workers, max_chunk):
@@ -481,9 +481,9 @@ class COEF(YAMLObject, Base):
         coefs = [pickle.dumps(c).decode('utf-8') for c in coefs]
         while True:
             try:
-                coefObj = KeywordCOEF.get_from_id(keyword_id)
+                coefObj = KeywordCOEF().get_from_id(keyword_id)
                 if not coefObj: 
-                    coefObj = KeywordCOEF()
+                    coefObj = New(KeywordCOEF())
                     coefObj['_id'] = keyword_id
                 coefObj['siteid'] = siteid
                 coefObj['keywords'].extend(coefs)
@@ -498,7 +498,7 @@ class COEF(YAMLObject, Base):
     def coef(self, keyword, with_searches, debug):
         while True:
             try:
-                docs = reduce(list.__add__, [doc['keywords'] for doc in Doc.all({'keywords':keyword['_id']})])
+                docs = reduce(list.__add__, [doc['keywords'] for doc in Doc().find({'keywords':keyword['_id']})])
                 break
             except:
                 random_sleep(1,2)
@@ -531,7 +531,7 @@ class COEF(YAMLObject, Base):
         keyword_id, Dab = k
         while True:
             try:
-                rk = Keyword.get_from_id(keyword_id)
+                rk = Keyword().get_from_id(keyword_id)
                 break
             except:
                 #if debug: print "!IDF: reconnect Dk(%d). keyword: %s"%(reconnect, keyword['_id'])

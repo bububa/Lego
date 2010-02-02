@@ -80,7 +80,7 @@ class IterateInserter(YAMLObject, Base):
         self.output = []
         max_pages = 100
         while True:
-            pages = [p for p in Page.all(self.query).limit(max_pages)]
+            pages = [p for p in Page().find(self.query).limit(max_pages)]
             for page in pages:
                 db = DB(self.host, self.port, self.user, self.passwd, self.db, self.table)
                 if not page['wrapper']: 
@@ -148,7 +148,7 @@ class IterateInserter(YAMLObject, Base):
         last_id = int(last_id)
         while retry:
             try:
-                pageObj = Page.get_from_id(pid)
+                pageObj = Page().get_from_id(pid)
                 pageObj['in_database'] = last_id
                 pageObj.save()
                 break
@@ -197,7 +197,7 @@ class IDFUpdater(YAMLObject, Base):
         else: based_on_id = None
         if hasattr(self, 'duplicate_name_filter'): duplicate_name_filter = self.duplicate_name_filter
         else: duplicate_name_filter = None
-        keywords = [{'ori_id':keyword['ori_id'], 'name':keyword['name'], 'idf':keyword['idf']} for keyword in Keyword.all({'siteid':siteid})]
+        keywords = [{'ori_id':keyword['ori_id'], 'name':keyword['name'], 'idf':keyword['idf']} for keyword in Keyword().find({'siteid':siteid})]
         for keyword in iter(keywords):
             try:
                 self.save(keyword, vertical, column, based_on_id, duplicate_name_filter, debug)
@@ -258,13 +258,13 @@ class COEFInserter(YAMLObject, Base):
         else: vertical = 0
         if hasattr(self, 'with_searches'): with_searches = self.with_searches
         else: with_searches = None
-        for keywordCoef in KeywordCOEF.all({'siteid':siteid}):
-            keyword = Keyword.get_from_id(keywordCoef['_id'])
+        for keywordCoef in KeywordCOEF().find({'siteid':siteid}):
+            keyword = Keyword().get_from_id(keywordCoef['_id'])
             tmp_keywords = [pickle.loads(coef.encode('utf-8')) for coef in keywordCoef['keywords']]
             tmp_keywords = sorted(tmp_keywords,cmp=lambda x,y:cmp(y['rank'],x['rank']))
             related_keywords = []
             for k in tmp_keywords[0:10]:
-                rk = Keyword.get_from_id(k['_id'])
+                rk = Keyword().get_from_id(k['_id'])
                 related_keywords.append({'id':rk['ori_id'], 'name':rk['name'], 'coef':k['coef'], 'rank':k['rank']})
             if not related_keywords: continue
             try:
@@ -276,9 +276,9 @@ class COEFInserter(YAMLObject, Base):
 
     def top10(self, siteid, with_searches):
         if with_searches:
-            keywords = [{'name':keyword['name'], 'ori_id':keyword['ori_id'], 'idf':keyword['idf']*keyword['sidf']} for keyword in Keyword.all({'siteid':siteid}) if (keyword['idf']*keyword['sidf'])>0]
+            keywords = [{'name':keyword['name'], 'ori_id':keyword['ori_id'], 'idf':keyword['idf']*keyword['sidf']} for keyword in Keyword().find({'siteid':siteid}) if (keyword['idf']*keyword['sidf'])>0]
         else:
-            keywords = [{'name':keyword['name'], 'ori_id':keyword['ori_id'], 'idf':keyword['idf']} for keyword in Keyword.all({'siteid':siteid}) if keyword['idf']>0]
+            keywords = [{'name':keyword['name'], 'ori_id':keyword['ori_id'], 'idf':keyword['idf']} for keyword in Keyword().find({'siteid':siteid}) if keyword['idf']>0]
         keywords = sorted(keywords, cmp=lambda x,y:cmp(x['idf'], y['idf']))
         return [{'name':k['name'], 'idf':k['idf'], 'id':k['ori_id']} for k in keywords[0:10]]
 
@@ -315,13 +315,13 @@ class COEFUpdater(YAMLObject, Base):
         else: siteid = None
         if hasattr(self,'debug') and self.debug: debug = self.debug
         else: debug = None
-        for keywordCoef in KeywordCOEF.all({'siteid':siteid}):
-            keyword = Keyword.get_from_id(keywordCoef['_id'])
+        for keywordCoef in KeywordCOEF().find({'siteid':siteid}):
+            keyword = Keyword().get_from_id(keywordCoef['_id'])
             tmp_keywords = [pickle.loads(coef.encode('utf-8')) for coef in keywordCoef['keywords']]
             tmp_keywords = sorted(tmp_keywords,cmp=lambda x,y:cmp(y['rank'],x['rank']))
             related_keywords = []
             for k in tmp_keywords[0:10]:
-                rk = Keyword.get_from_id(k['_id'])
+                rk = Keyword().get_from_id(k['_id'])
                 related_keywords.append({'ori_id':rk['ori_id'], 'name':rk['name'], 'coef':k['coef'], 'rank':k['rank']})
             if not related_keywords: continue
             try:

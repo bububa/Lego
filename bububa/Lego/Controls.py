@@ -33,9 +33,13 @@ class Subprocess(YAMLObject, Base):
                 self.execute()
         else:
             self.execute()
+        while self.running_process:
+            self.running_process = self.recycle(self.running_process)
         return self.output
     
     def execute(self):
+        sleep_time = 0
+        if hasattr(self, 'sleep') and self.sleep: sleep_time = self.sleep
         processes = self.parse_input(self.processes)
         if not isinstance(processes, (list, set)): return None
         self.output = []
@@ -55,13 +59,14 @@ class Subprocess(YAMLObject, Base):
             if cmd in self.running_process: continue
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             self.running_process[cmd] = {'process':p, 'starttime': datetime.datetime.now(), 'timeout':timeout}
-        while self.running_process:
+        now = time.time()
+        while True:
             self.running_process = self.recycle(self.running_process)
-            if hasattr(self, 'sleep') and self.sleep and time.time()-now > self.sleep: break
+            if time.time()-now > sleep_time: break
         return self.output
     
     def recycle(self, running_process):
-        if not running_process: return []
+        if not running_process: return {}
         remove_cmd = []
         for cmd, process in running_process.items():
             if process['process'].poll() != None: 

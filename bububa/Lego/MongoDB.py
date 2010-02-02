@@ -6,12 +6,19 @@ MongoDB.py
 Created by Syd on 2009-11-08.
 Copyright (c) 2009 __ThePeppersStudio__. All rights reserved.
 """
+from settings import *
 from datetime import datetime
-from mongokit import *
+from mongokit import Document as MongoDocument
+from mongokit import INDEX_ASCENDING, INDEX_DESCENDING
+from mongokit import Connection
+from pymongo.errors import *
 
-class Site(MongoDocument):
-    db_name = 'crawldb'
-    collection_name = 'sites'
+try:
+    conn = Connection(MongoHost, MongoPort)
+except AutoReconnect, err:
+    conn = None
+
+class SiteDocument(MongoDocument):
     structure = {
         'url': unicode,
         'effective_url': unicode,
@@ -29,10 +36,8 @@ class Site(MongoDocument):
     default_values = {'duration':10*60, 'start_no':0, 'end_no':5, 'max_depth':3}
     use_dot_notation = True
     
-    
-class Page(MongoDocument):
-    db_name = 'crawldb'
-    collection_name = 'pages'
+
+class PageDocument(MongoDocument):
     structure = {
         'label': unicode,
         'url': unicode,
@@ -52,14 +57,28 @@ class Page(MongoDocument):
         'rank': int
     }
     required_fields = ['url_hash']
-    indexes = [{'fields':'url_hash', 'unique':True}, {'fields':['domain', 'rank', 'in_database']}, {'fields':'domain'}, {'fields':'in_database'}, {'fields':'rank'}]
+    indexes = [{'fields':'url_hash', 'unique':True}, {'fields':[('domain', INDEX_ASCENDING), ('rank', INDEX_ASCENDING), ('in_database', INDEX_ASCENDING)]}, {'fields':'domain'}, {'fields':'in_database'}, {'fields':'rank'}]
     default_values = {'failed_freq':0.0, 'update_freq':1.0, 'updated_times':1, 'in_database':0, 'rank':30, 'inserted_at':datetime.utcnow, 'last_updated_at':datetime.utcnow}
     use_dot_notation=True
 
 
-class Keyword(MongoDocument):
-    db_name = 'collective'
-    collection_name = 'keywords'
+class URLTrieDocument(MongoDocument):
+    structure = {
+        'label': unicode,
+        'url': unicode,
+        'url_hash': unicode,
+        'depth': int,
+        'is_target': int,
+        'in_database': int,
+        'inserted_at': datetime
+    }
+    required_fields = ['url_hash']
+    indexes = [{'fields':'url_hash', 'unique':True}, {'fields':[('label', INDEX_ASCENDING), ('url_hash', INDEX_ASCENDING)]}, {'fields':'label'}, {'fields':[('label', INDEX_ASCENDING), ('depth', INDEX_ASCENDING)]}, {'fields':[('label', INDEX_ASCENDING), ('depth', INDEX_ASCENDING), ('url_hash', INDEX_ASCENDING)]}, {'fields':'depth'}, {'fields':'is_target'}, {'fields':'in_database'}, {'fields':[('label', INDEX_ASCENDING), ('is_target', INDEX_ASCENDING)]}, {'fields':[('label', INDEX_ASCENDING), ('in_database', INDEX_ASCENDING)]}, {'fields':[('label', INDEX_ASCENDING), ('is_target', INDEX_ASCENDING), ('in_database', INDEX_ASCENDING)]}]
+    default_values = {'inserted_at':datetime.utcnow, 'is_target':0, 'in_database':0}
+    use_dot_notation=True
+
+
+class KeywordDocument(MongoDocument):
     structure = {
         'name': unicode,
         'ori_id': int, 
@@ -77,9 +96,7 @@ class Keyword(MongoDocument):
     use_dot_notation = True
 
 
-class Doc(MongoDocument):
-    db_name = 'collective'
-    collection_name = 'docs'
+class DocDocument(MongoDocument):
     structure = {
         'ori_id': int,
         'content': unicode,
@@ -96,9 +113,7 @@ class Doc(MongoDocument):
     use_dot_notation = True
 
 
-class Search(MongoDocument):
-    db_name = 'collective'
-    collection_name = 'searches'
+class SearchDocument(MongoDocument):
     structure = {
         'ori_id': int,
         'content': unicode,
@@ -115,9 +130,7 @@ class Search(MongoDocument):
     use_dot_notation = True
 
 
-class KeywordCOEF(MongoDocument):
-    db_name = 'collective'
-    collection_name = 'coefs'
+class KeywordCOEFDocument(MongoDocument):
     structure = {
         'keywords':list,
         'siteid': int
@@ -125,19 +138,62 @@ class KeywordCOEF(MongoDocument):
     indexes = [{'fields':'siteid'}]
 
 
-class URLTrie(MongoDocument):
-    db_name = 'crawldb'
-    collection_name = 'urltrie'
-    structure = {
-        'label': unicode,
-        'url': unicode,
-        'url_hash': unicode,
-        'depth': int,
-        'is_target': int,
-        'in_database': int,
-        'inserted_at': datetime
-    }
-    required_fields = ['url_hash']
-    indexes = [{'fields':'url_hash', 'unique':True}, {'fields':['label', 'url_hash']}, {'fields':'label'}, {'fields':['label', 'depth']}, {'fields':['label', 'depth', 'url_hash']}, {'fields':'depth'}, {'fields':'is_target'}, {'fields':'in_database'}, {'fields':['label', 'is_target']}, {'fields':['label', 'in_database']}, {'fields':['label', 'is_target', 'in_database']}]
-    default_values = {'inserted_at':datetime.utcnow, 'is_target':0, 'in_database':0}
-    use_dot_notation=True
+def reconnect():
+    try:
+        conn = Connection(MongoHost, MongoPort)
+    except AutoReconnect, err:
+        conn = None
+    return conn
+    
+
+def Site(conn=None):
+    if not conn: conn = reconnect()
+    if not conn: return None
+    conn.register([SiteDocument])
+    return conn.crawldb.sites.SiteDocument
+
+
+def Page(conn=None):
+    if not conn: conn = reconnect()
+    if not conn: return None
+    conn.register([PageDocument])
+    return conn.crawldb.pages.PageDocument
+
+
+def URLTrie(conn=None):
+    if not conn: conn = reconnect()
+    if not conn: return None
+    conn.register([URLTrieDocument])
+    return conn.crawldb.urltrie.URLTrieDocument
+
+
+def Keyword(conn=None):
+    if not conn: conn = reconnect()
+    if not conn: return None
+    conn.register([KeywordDocument])
+    return conn.collective.keywords.KeywordDocument
+
+
+def Doc(conn=None):
+    if not conn: conn = reconnect()
+    if not conn: return None
+    conn.register([DocDocument])
+    return conn.collective.docs.DocDocument
+
+
+def Search(conn=None):
+    if not conn: conn = reconnect()
+    if not conn: return None
+    conn.register([SearchDocument])
+    return conn.collective.searches.SearchDocument
+
+
+def KeywordCOEF(conn=None):
+    if not conn: conn = reconnect()
+    if not conn: return None
+    conn.register([KeywordCOEFDocument])
+    return conn.collective.coefs.KeywordCOEFDocument
+
+
+def New(obj):
+    return obj()
