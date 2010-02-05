@@ -15,6 +15,7 @@ import datetime
 import threading
 import Queue
 import MySQLdb
+import random
 import DBUtils.PersistentDB
 from DBUtils.SteadyDB import connect
 from dateutil.parser import parse as dateParse
@@ -480,3 +481,27 @@ def WrapperParser(content, wrapper_pattern, user_info=None, miss_fields_func=Non
             elif isinstance(v, (str, unicode)): wrapper[k] = v.strip()
         if miss_fields_func and miss_fields_func(wrapper): return None
     return wrapper
+
+
+def toHex(s):
+    lst = []
+    for ch in s:
+        hv = hex(ord(ch)).replace('0x', '')
+        if len(hv) == 1:
+            hv = '0'+hv
+        lst.append(hv)
+    return reduce(lambda x,y:x+y, lst)
+    
+
+def hexToStr(s):
+    return s and chr(atoi(s[:2], base=16)) + toStr(s[2:]) or ''
+
+
+def randomString(minl=1, maxl=None, hexstr=False):
+    trunk = range(97, 123)
+    if not maxl: maxl = random.choice(range(1, 10))
+    if hexstr:
+        return ''.join(['%' + toHex(chr(random.choice(trunk))) for l in xrange(1, maxl + 1)])
+    else:
+        return ''.join([chr(random.choice(trunk)) for l in xrange(1, maxl + 1)])
+            
