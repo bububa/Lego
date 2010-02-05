@@ -113,7 +113,7 @@ class BaseCrawler(YAMLObject, Base):
     
     def remove_inner_duplicate(self):
         response = list(set(self.new_urls) - set(self.url_cache))
-        if not hasattr(self, 'duplicate_pattern') and not self.duplicate_pattern: return response
+        if not (hasattr(self, 'duplicate_pattern') and self.duplicate_pattern): return response
         pattern = re.compile(self.duplicate_pattern, re.I)
         res = []
         for u in response:
@@ -162,7 +162,7 @@ class BaseCrawler(YAMLObject, Base):
 
 class PaginateCrawler(YAMLObject, Base):
     yaml_tag = u'!PaginateCrawler'
-    def __init__(self, url_pattern=None, start_no=None, end_no=None, step=None, wrapper=None, multithread=None, callback=None, executable=None, proxies=None, login=None, sleep=None, debug=None):
+    def __init__(self, url_pattern=None, start_no=None, end_no=None, step=None, wrapper=None, essential_fields=None, multithread=None, callback=None, executable=None, proxies=None, login=None, sleep=None, debug=None):
         self.url_pattern = url_pattern
         self.wrapper = wrapper
         self.start_no = start_no
@@ -175,6 +175,7 @@ class PaginateCrawler(YAMLObject, Base):
         self.login = login
         self.cookies = None
         self.sleep = sleep
+        self.essential_fields = essential_fields
         self.debug = debug
     
     def __repr__(self):
@@ -258,14 +259,11 @@ class PaginateCrawler(YAMLObject, Base):
     def parser(self, response):
         if not response: return
         if hasattr(self, 'log'): self.log.info('parse: %s'%response.effective_url)
-        if hasattr(self, 'wrapper'):
-            pattern = re.compile(self.wrapper, re.S)
-            wrapper = pattern.findall(response.body)
-            if wrapper:
-                wrapper = wrapper[0]
-            else: wrapper = ''
+        if hasattr(self, 'user_info') and isinstance(self.user_info, dict) and self.user_info:
+            user_info = self.user_info
         else:
-            wrapper = response.body
+            user_info = None
+        wrapper = WrapperParser(response.body, self.wrapper, user_info, self.miss_fields)
         if hasattr(self, 'furthure'):
             furthure = self.furthure_parser(wrapper)
             if furthure: wrapper.update(furthure)
@@ -278,6 +276,16 @@ class PaginateCrawler(YAMLObject, Base):
         if hasattr(self, 'url_pattern'): url_pattern = self.url_pattern
         else: url_pattern = ''
         self.output.append({'url':response.url, 'effective_url':response.effective_url, 'code':response.code, 'body':response.body, 'size':response.size, 'wrapper':wrapper, 'etag':response.etag, 'last_modified':response.last_modified})
+    
+    def miss_fields(self, wrapper):
+        if not hasattr(self, 'essential_fields'): return None
+        for k in self.essential_fields:
+            if k not in self.essential_fields or not wrapper[k]: 
+                if hasattr(self, 'log'): self.log.warn('missing field: %s'%k)
+                if hasattr(self, 'debug') and self.debug:
+                    raise CrawlerError("!URLCrawler: missing field: %s"%k)
+                return True
+        return None
     
 
 class DictParser(YAMLObject, Base):
@@ -603,7 +611,7 @@ class URLsFinder(YAMLObject, Base):
 
 class DetailCrawler(YAMLObject, Base):
     yaml_tag = u'!DetailCrawler'
-    def __init__(self, pages=None, url_pattern=None, wrapper=None, essential_fields=None, user_info=None, remove_external_duplicate=None, multithread=True, save_output=None, sleep=None, callback=None, page_callback=None, proxies=None, login=None, debug=None):
+    def __init__(self, pages=None, url_pattern=None, in_page_url_params=None, wrapper=None, essential_fields=None, user_info=None, remove_external_duplicate=None, multithread=True, save_output=None, sleep=None, callback=None, page_callback=None, proxies=None, login=None, debug=None):
         self.pages = pages
         self.url_pattern = url_pattern
         self.essential_fields = essential_fields
@@ -665,13 +673,35 @@ class DetailCrawler(YAMLObject, Base):
     
     def fetch(self, page, page_num):
         links = []
-        try:
-            soup = BeautifulSoup(page['wrapper'], fromEncoding='utf-8')
-            links = [URL.normalize(urljoin(page['effective_url'], a['href'])) for a in iter(soup.findAll('a')) if a.has_key('href') and a['href'] and re.match(self.url_pattern, a['href'])]
-        except:
-            urls = re.findall('href=["|\'|](.*?)["|\'|]',page['wrapper'],re.I|re.M)
-            if urls:
-                links = [URL.normalize(urljoin(page['effective_url'],url)) for url in iter(urls) if re.match(self.url_pattern, url)]
+        if hasattr(self, 'in_page_url_params') and self.in_page_url_params:
+            params = {}
+            for k, v in self.in_page_url_params.items():
+                if k == 'base_param': continue
+                pattern = re.compile(v, re.S)
+                tmp = pattern.findall(page['wrapper'])
+                params[k] = tmp
+            if params:
+                for i, v in enumerate(params[self.in_page_url_params['base_param']]):
+                    data = {}
+                    data[self.in_page_url_params['base_param']] = v
+                    for k in params:
+                        if k in self.in_page_url_params['base_param']: continue
+                        try:
+                            data[k] = params[k][i]
+                        except:
+                            data[k] = params[k][0]
+                    try:
+                        links.append(self.url_pattern%data)
+                    except:
+                        pass
+        else:
+            try:
+                soup = BeautifulSoup(page['wrapper'], fromEncoding='utf-8')
+                links = [URL.normalize(urljoin(page['effective_url'], a['href'])) for a in iter(soup.findAll('a')) if a.has_key('href') and a['href'] and re.match(self.url_pattern, a['href'])]
+            except:
+                urls = re.findall('href=["|\'|](.*?)["|\'|]',page['wrapper'],re.I|re.M)
+                if urls:
+                    links = [URL.normalize(urljoin(page['effective_url'],url)) for url in iter(urls) if re.match(self.url_pattern, url)]
         if not links: 
             if hasattr(self, 'log'): self.log.warning('no links in page: %s after remove unmatched links'%page['effective_url'])
             return 0
