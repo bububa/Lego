@@ -162,8 +162,9 @@ class BaseCrawler(YAMLObject, Base):
 
 class PaginateCrawler(YAMLObject, Base):
     yaml_tag = u'!PaginateCrawler'
-    def __init__(self, url_pattern=None, start_no=None, end_no=None, step=None, wrapper=None, essential_fields=None, multithread=None, callback=None, executable=None, proxies=None, login=None, sleep=None, debug=None):
+    def __init__(self, url_pattern=None, start_no=None, end_no=None, step=None, post_params=None, wrapper=None, essential_fields=None, multithread=None, callback=None, executable=None, proxies=None, login=None, sleep=None, debug=None):
         self.url_pattern = url_pattern
+        self.post_params = post_params
         self.wrapper = wrapper
         self.start_no = start_no
         self.end_no = end_no
@@ -192,13 +193,16 @@ class PaginateCrawler(YAMLObject, Base):
         pattern = re.compile('{NUMBER}')
         if hasattr(self, 'proxies') and self.proxies: proxies = self.proxies
         else: proxies = None
-        links = [pattern.sub(str(no), self.url_pattern) for no in xrange(self.start_no, (self.end_no + 1)*step, step)]
+        if hasattr(self, 'post_params') and self.post_params:
+            links = [dict([(k, pattern.sub(str(no), str(v))) for k, v in self.post_params.items()]) for no in xrange(self.start_no, (self.end_no + 1) * step, step)]
+        else:
+            links = [pattern.sub(str(no), self.url_pattern) for no in xrange(self.start_no, (self.end_no + 1)*step, step)]
         if hasattr(self, 'login') and self.login:
             mario = Mario()
             mario.set_login(self.login['params'])
             mario.get(self.login['url'])
             self.cookies = mario.cookies
-        if hasattr(self, 'multithread') and self.multithread:
+        if hasattr(self, 'multithread') and self.multithread or hasattr(self, 'post_params') and self.post_params:
             max_chunk = random.choice(range(5,10))
             total_workers = len(links)
             for i in xrange(0, total_workers, max_chunk):
@@ -248,12 +252,18 @@ class PaginateCrawler(YAMLObject, Base):
                 mario = Mario()
                 if hasattr(self, 'cookies') and self.cookies: mario.set_cookies(self.cookies)
                 mario.set_proxies_list(self.proxies)
-                response = mario.get(url)
+                if hasattr(self, 'post_params') and self.post_params:
+                    response = mario.get(self.url_pattern, body=url)
+                else:
+                    response = mario.get(url)
                 if response: break
                 retry -= 1
         else:
             mario = Mario()
-            response = mario.get(url)
+            if hasattr(self, 'post_params') and self.post_params:
+                response = mario.get(self.url_pattern, body=url)
+            else:
+                response = mario.get(url)
         self.parser(response)
         
     def parser(self, response):
@@ -614,6 +624,7 @@ class DetailCrawler(YAMLObject, Base):
     def __init__(self, pages=None, url_pattern=None, in_page_url_params=None, wrapper=None, essential_fields=None, user_info=None, remove_external_duplicate=None, multithread=True, save_output=None, sleep=None, callback=None, page_callback=None, proxies=None, login=None, debug=None):
         self.pages = pages
         self.url_pattern = url_pattern
+        self.in_page_url_params = in_page_url_params
         self.essential_fields = essential_fields
         self.wrapper = wrapper
         self.user_info = user_info
